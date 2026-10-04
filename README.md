@@ -167,8 +167,16 @@ account's monthly Codespaces hours, with no card. `.devcontainer/` sets everythi
    (`https://<name>-7860.app.github.dev`).
 3. Optional: add `GEMINI_API_KEY` as a Codespaces secret (GitHub **Settings → Codespaces → Secrets**).
 
-The codespace stops after a period without use (set up to 4 hours in GitHub's Codespaces settings) and the link
-stops with it. Start it again from GitHub and the same link works. Data is kept between starts.
+Things to know:
+
+- **Stops when idle:** the codespace stops after a period without use (set up to 4 hours in GitHub's Codespaces
+  settings). Visitors to the link can't wake it; only you can, from GitHub or with `gh codespace ssh`.
+- **Port turns private on restart:** after every start the port goes back to *private*, so make it public again
+  (Ports tab, or `gh codespace ports visibility 7860:public -c <codespace name>`). The address stays the same.
+- **App starts by itself:** it starts on every start, in demo mode, with the Gemini key from the Codespaces secret.
+  Its log is `/tmp/swatch.log`. Data is kept between starts.
+- **Free hours:** a 2-core codespace uses the free monthly hours at about 2 core-hours per hour, so stop it when
+  nobody needs it.
 
 ## Accuracy
 
