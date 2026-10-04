@@ -30,10 +30,17 @@ if [ ! -f .env ]; then
   echo "==> Created .env. Add your GEMINI_API_KEY there for full mode."
 fi
 
-# 3. Frontend build
+# 3. Load the catalogue the first time (or after adding photos, run
+#    `python -m backend.ingest` yourself)
+if [ ! -f data/swatch.db ] || ! python -c "from backend import db; import sys; sys.exit(0 if db.list_designs() else 1)" 2>/dev/null; then
+  echo "==> Loading catalogue (first time downloads the ~600 MB CLIP model)"
+  python -m backend.ingest
+fi
+
+# 4. Frontend build
 echo "==> Building the UI"
 (cd frontend && { [ -d node_modules ] || npm install; } && npm run build)
 
-# 4. Start the server
+# 5. Start the server
 echo "==> Open http://localhost:7860"
 exec uvicorn backend.main:app --host 0.0.0.0 --port 7860

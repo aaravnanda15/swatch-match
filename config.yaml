@@ -13,6 +13,7 @@ llm:
   provider: gemini                # "gemini" or "none" (forces fallback mode)
   model: gemini-2.5-flash         # change here if Google renames models
   timeout_seconds: 20
+  seconds_between_calls: 4      # free tier allows ~15 calls/minute
 
 uploads:
   max_mb: 10                      # reject bigger files

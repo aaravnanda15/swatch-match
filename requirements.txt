@@ -14,4 +14,4 @@ requests==2.*
 sentence-transformers==3.*
 
 # Gemini (only used inside backend/llm.py)
-google-genai==1.*
+google-genai>=1.20

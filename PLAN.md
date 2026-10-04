@@ -112,3 +112,6 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Install packages with `UV_HTTP_TIMEOUT=60` so a slow network cannot hang silently.
 - scripts/fetch_sample_catalogue.py already forces IPv4 (IPv6 to Wikimedia was being reset), spreads picks across fabric categories, skips people/loom/shop photos, and pauses to avoid HTTP 429. Still eyeball the photos after download and drop any that are not fabric.
 - **Commit and push after every working step.**
+
+## Status
+- Step 1 built in the cloud session and pushed. Tested there with fake photos and a stand-in for CLIP (Hugging Face is blocked in the cloud session). Waiting for a real-photo, real-model test on the Mac.
