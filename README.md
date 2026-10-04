@@ -120,6 +120,11 @@ On a fresh install of the sample catalogue, in Basic mode (no Gemini):
 
 The two photo misses (D002 and D022) land in the top 5 behind a similar-looking design.
 
+With Gemini on, the score on these clean test sentences is the same. Gemini's gain shows on messy real messages,
+which the keyword list misreads: *"bandni wala georjet dupata laal colour mein 1500 tak"* (misspellings) and
+*"red nahi chahiye, blue ya green dikhao"* (negation). It also gives better photo descriptions, so reasons can say
+*"same pattern and border"*.
+
 **Read this number with care: it uses sample data and edited query photos.** The query photos are cropped, tilted,
 re-lit, blurred and recompressed copies of catalogue photos, made by `scripts/make_test_queries.py`.
 `evaluate.py` refuses to run if a query photo is byte-identical to a catalogue photo. Real phone photos of real
@@ -187,7 +192,7 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
 
 ## AI tools used
 
-- **In the app:** Google **Gemini 2.5 Flash** (reading messages, tagging photos, clarifying questions) and
+- **In the app:** Google **Gemini 3.5 Flash-Lite** (reading messages, describing photos, clarifying questions; set in `config.yaml`) and
   **CLIP ViT-B/32** via sentence-transformers (photo and text matching, plus fallback tagging).
 - **To build it:** **Claude Code** (Anthropic's Claude) wrote most of the code step by step, with each step
   checked in the browser and through the API before moving on.

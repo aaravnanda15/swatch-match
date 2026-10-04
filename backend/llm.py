@@ -13,6 +13,7 @@ so stock numbers and rates never come from the LLM.
 
 import json
 import re
+import time
 
 from backend.config import ATTRIBUTES, CONFIG, GEMINI_API_KEY
 
@@ -111,7 +112,15 @@ class GeminiProvider:
         return self._client
 
     def _generate(self, contents):
-        """One Gemini call that returns parsed JSON, or None on any failure."""
+        """One Gemini call that returns parsed JSON, or None on any failure.
+        If Gemini is briefly busy (503) or rate-limited (429), wait and try once more."""
+        result = self._generate_once(contents)
+        if result is None and self.last_error and ("503" in self.last_error or "429" in self.last_error):
+            time.sleep(2)
+            result = self._generate_once(contents)
+        return result
+
+    def _generate_once(self, contents):
         try:
             from google.genai import types
 

@@ -11,7 +11,7 @@ embeddings:
 
 llm:
   provider: gemini                # "gemini" or "none" (forces fallback mode)
-  model: gemini-2.5-flash         # change here if Google renames models
+  model: gemini-3.5-flash-lite    # change here if Google renames models (bigger flash models were overloaded)
   timeout_seconds: 20
   seconds_between_calls: 4      # free tier allows ~15 calls/minute
 

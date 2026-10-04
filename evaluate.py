@@ -19,6 +19,7 @@ import argparse
 import csv
 import hashlib
 import sys
+import time
 from collections import defaultdict
 from pathlib import Path
 
@@ -59,8 +60,12 @@ def main():
     right_scores, wrong_scores = [], []
     labels_when_right = defaultdict(int)
     fallback_runs = 0
+    provider = llm.get_llm()
+    # Stay under the free Gemini rate limit (each query makes 1-2 calls)
+    pause = CONFIG["llm"].get("seconds_between_calls", 0) if provider.available else 0
 
     for row in rows:
+        time.sleep(pause)
         img = load_image_file(QUERIES_DIR / row["query_image"]) if row["query_image"] else None
         expected = set(row["expected_design_id"].split("|"))
         answer = orchestrator.handle_enquiry(row["query_text"], img)
@@ -86,7 +91,6 @@ def main():
             first = f"{ids[0]} {answer['results'][0]['score']:.2f}" if ids else "-"
             print(f"  {mark:4s}  {query.strip():45s} want {row['expected_design_id']:15s} got {first}")
 
-    provider = llm.get_llm()
     print("\nSwatch Match evaluation (sample data, augmented queries)")
     print(f"  AI: {provider.name}, model {CONFIG['llm']['model'] if provider.available else '-'}; "
           f"{fallback_runs} of {len(rows)} queries ran in fallback mode")

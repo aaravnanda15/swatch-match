@@ -127,4 +127,5 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Step 7 done: trace panel (timeline of tool calls, timings, score mix).
 - Step 8 done: Log tab (cards on phones, table on desktop, search, copy again, buyer photo via /api/uploads).
 - Step 9 done: README (problem, mermaid diagram, setup, accuracy 30/32 top-1 and 32/32 top-5 on fresh install, deploy, limits, future, AI tools), Dockerfile + .dockerignore for HF Spaces. Docker build NOT tested locally (no Docker on the Mac); fresh-install ingest + evaluate were tested in a clean copy.
+- Gemini on (user's key in .env only): model gemini-3.5-flash-lite (2.5-flash retired for new users; 3.x flash models returned 503 'high demand'); one retry on 503/429; Gemini's reading used as-is when it answers (fixes negation).
 - Remaining: create the HF Space and push (needs the user's HF account and token); set GEMINI_API_KEY there.
