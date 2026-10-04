@@ -29,8 +29,10 @@ memory, which is slow and depends on whoever is on duty.
    guess.
 4. **Staff tick the designs to offer.** A draft reply appears in English, हिंदी, Hinglish or ગુજરાતી. They edit it
    and press **Approve & copy**, then paste it into WhatsApp. Every approved reply is saved in the **Log**.
+5. **Optional, with WhatsApp connected:** buyers' messages arrive in an **Inbox** tab on their own, already matched.
+   Staff check the shortlist and tap **Send on WhatsApp**, and the reply and the design photos go to the buyer.
 
-It **shortlists, it never decides, and it never sends anything.**
+It **shortlists, it never decides, and nothing reaches a buyer until staff approve it.**
 
 ## How it works
 
@@ -137,23 +139,78 @@ list them in `test_queries.csv`.
 2. Push this repository to the Space, for example with
    `git remote add space https://huggingface.co/spaces/<you>/swatch-match` and then `git push space HEAD:main`.
    Use a Hugging Face access token with write permission as the password.
-3. In the Space's **Settings → Variables and secrets**, add the secret `GEMINI_API_KEY` (optional).
+3. In the Space's **Settings → Variables and secrets**, add the secret `GEMINI_API_KEY` (optional) and
+   **`STAFF_PASSCODE`**. Set the passcode whenever the app is online, or anyone with the link could open it.
 
 The Dockerfile builds the UI, installs CPU-only PyTorch, downloads CLIP and loads the catalogue at build time, so
 the Space starts quickly. **Note:** free Spaces have no permanent disk. Tag edits made in the app and the Log reset
 when the Space restarts, so keep checked tags in `catalogue/tags.csv`.
+
+## Connect WhatsApp (optional)
+
+Swatch Match uses Meta's official **WhatsApp Business Cloud API**. Unofficial WhatsApp Web tools break WhatsApp's
+terms and can get the number banned, so they are not supported.
+
+**What you need:** the app online at an HTTPS address (the Hugging Face Space above works), and a Meta developer
+account (free).
+
+1. Go to <https://developers.facebook.com/apps>, create an app of type **Business**, and add the **WhatsApp**
+   product.
+2. In **WhatsApp → API Setup**, Meta gives you a free **test number**. Add your own phone under *To* and confirm the
+   code, so you can message the test number.
+3. Copy these into the Space secrets (or `.env` on your computer):
+   - `WHATSAPP_TOKEN`: the access token. The one on the API Setup page expires after 24 h; for real use create a
+     permanent *System User* token in Business Settings.
+   - `WHATSAPP_PHONE_NUMBER_ID`: the *Phone number ID* on the API Setup page.
+   - `WHATSAPP_APP_SECRET`: **App settings → Basic → App secret**.
+   - `WHATSAPP_VERIFY_TOKEN`: any password you make up; type the same one into Meta in the next step.
+4. In **WhatsApp → Configuration → Webhook**, enter the callback URL
+   `https://<your-space>.hf.space/api/whatsapp/webhook` and your verify token, press **Verify and save**, then
+   subscribe to **messages**.
+5. Send the test number a photo from your phone. It appears in the **Inbox** tab within about 10 seconds.
+6. When it works, add the shop's real number in Meta (**WhatsApp → Phone numbers**). A number used with the Cloud
+   API can't stay on the normal WhatsApp app at the same time.
+
+**How it behaves:**
+
+- **Photo and text together:** a photo plus the text sent right after it (within 2 minutes, `merge_seconds` in
+  `config.yaml`) become one enquiry.
+- **Retries:** Meta sometimes delivers the same message twice; the second copy is ignored.
+- **Other message types:** voice notes and videos are listed as *unsupported* so staff still see them.
+- **The 24-hour window:** WhatsApp only allows free-form replies within 24 hours of the buyer's last message. After
+  that, the app says so and staff reply from their phone.
+- **What a send contains:** the approved text, then one photo per ticked design (at most 5). Captions carry the
+  number, name and ID; prices stay in the text.
+- **Costs:** replies within the 24-hour window are free under Meta's current pricing.
+- **Free Hugging Face Spaces** sleep when unused and have no permanent disk. Meta retries for a while, so a message
+  to a sleeping Space arrives late. The Inbox resets when the Space restarts. For daily use, add persistent
+  storage or use a small always-on server.
+
+**Try it without Meta:** set the four `WHATSAPP_*` values in `.env` to any test values, and set
+`WHATSAPP_DRY_RUN=1`. Then send yourself fake messages:
+
+```bash
+python scripts/fake_whatsapp.py --photo test_queries/q_D010_text.jpg --name "Ramesh Textiles"
+python scripts/fake_whatsapp.py --text "isme blue silk chahiye"        # merges with the photo above
+```
+
+**Send on WhatsApp** then prints the messages in the server log instead of sending them.
 
 ## Project layout
 
 ```
 backend/
   main.py           API routes; also serves the built UI
+  auth.py           optional staff passcode (STAFF_PASSCODE)
+  enquiries.py      run an enquiry through the agent and save it (app form and WhatsApp share this)
+  whatsapp.py       the ONLY file that talks to WhatsApp (webhook check, parsing, media, sending)
+  inbox.py          incoming WhatsApp messages -> enquiries (dedupe, photo + text merge)
   ingest.py         stock.csv + tags.csv + photos -> SQLite (embeddings, tags, stock)
   llm.py            the ONLY file that talks to an LLM (Gemini, or a "none" provider)
   embeddings.py     CLIP model, image and text vectors
   tagging.py        Gemini tags with CLIP zero-shot fallback
   images.py         upload checks (type, size, real format), EXIF rotation, shade check
-  db.py             SQLite tables: designs, stock, tags, embeddings, enquiries, audit_log
+  db.py             SQLite tables: designs, stock, tags, embeddings, enquiries, wa_seen, audit_log
   agent/
     orchestrator.py the router: which tools, in what order, with a trace
     tools.py        image_search, describe_photo, parse_text_to_attributes, attribute_filter,
@@ -161,14 +218,16 @@ backend/
     scoring.py      score mix, labels, reasons, shade note
     lexicon.py      keyword list for English / Hinglish / Hindi / Gujarati
     templates.py    reply and question templates in 4 languages
-frontend/           React + Vite + Tailwind; Enquiry / Catalogue / Log tabs
+frontend/           React + Vite + Tailwind; Inbox (with WhatsApp) / Enquiry / Catalogue / Log tabs
 catalogue/          sample photos, stock.csv, tags.csv, CREDITS.md
 evaluate.py         top-1 / top-5 on test_queries.csv
+scripts/            sample catalogue fetcher, test query maker, fake WhatsApp sender
 config.yaml         thresholds, weights, vocabulary, Gemini model, upload limits
 ```
 
 API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /api/audit` · `GET /api/designs` ·
-`PATCH /api/designs/{id}/tags` · `GET /api/health`.
+`PATCH /api/designs/{id}/tags` · `GET /api/health` · `POST /api/login` · `GET /api/inbox` · `GET /api/inbox/{id}` ·
+`POST /api/inbox/{id}/dismiss` · `POST /api/whatsapp/send` · `GET|POST /api/whatsapp/webhook`.
 
 ## Limits
 
@@ -179,7 +238,7 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
   judge true colour.
 - **The keyword list** misses misspellings and negation (*"not red"*). Gemini handles these when a key is set.
 - **One photo per enquiry**, and one main product per photo.
-- **No login.** It is meant for one shop's staff on a trusted device or network.
+- **One shared passcode**, not separate staff accounts. The Log does not record who approved each reply.
 
 ## What could come next
 
@@ -188,7 +247,8 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
 - Reading stock straight from Tally or Google Sheets instead of a CSV.
 - Persistent storage on Hugging Face (a dataset repo or a small database) so tag edits and the Log survive
   restarts.
-- Sending photos with the reply via the WhatsApp Business API, still only after staff approval.
+- Approved WhatsApp *message templates*, so staff can follow up after the 24-hour window.
+- Separate staff logins, so the Log shows who approved each reply.
 
 ## AI tools used
 
