@@ -31,6 +31,9 @@ memory, which is slow and depends on whoever is on duty.
    and press **Approve & copy**, then paste it into WhatsApp. Every approved reply is saved in the **Log**.
 5. **Optional, with WhatsApp connected:** buyers' messages arrive in an **Inbox** tab on their own, already matched.
    Staff check the shortlist and tap **Send on WhatsApp**, and the reply and the design photos go to the buyer.
+6. **Insights** turn enquiries into business information: reply rate and speed, what buyers ask for, and
+   **missed demand**, meaning requests nothing in stock fully matched and best matches that were out of stock. In
+   effect it's a restocking list written by the buyers.
 
 It **shortlists, it never decides, and nothing reaches a buyer until staff approve it.**
 
@@ -104,6 +107,17 @@ Without a key everything still works in *Basic mode*.
    wrong tags in the **Catalogue** tab; your edits are never overwritten.
 
 Run the ingest again whenever stock, rates or photos change. Work already done is skipped.
+
+### Demo mode (for presentations)
+
+Set `DEMO_MODE=1` in `.env` (or in the host's settings):
+
+- **Inbox, no Meta needed:** the Inbox works without a Meta account. **Simulate a WhatsApp buyer** sends six realistic
+  buyers through the same code path as real WhatsApp messages: a photo then Hinglish text, Hindi, Gujarati, a photo
+  only, a misspelled message and a vague one. Replies are printed in the server log, never sent.
+- **Sample week:** a clearly labelled sample week of enquiries fills the Insights tab. It uses real matching with
+  made-up buyers and dates, never appears in the Inbox or Log, and **Clear sample data** removes it.
+- **One-tap photos:** the Enquiry tab always offers one-tap sample buyer photos.
 
 ## Accuracy
 

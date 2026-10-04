@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getHealth, logout } from "./api.js";
 import Icon, { Logo } from "./components/Icon.jsx";
+import AboutSheet from "./components/AboutSheet.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
 import EnquiryPage from "./pages/EnquiryPage.jsx";
 import CataloguePage from "./pages/CataloguePage.jsx";
@@ -21,6 +22,7 @@ export default function App() {
   const [health, setHealth] = useState(null);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [newCount, setNewCount] = useState(0); // WhatsApp enquiries waiting
+  const [aboutOpen, setAboutOpen] = useState(false);
   const onNewCount = useCallback((n) => setNewCount(n), []);
 
   // "(2) Swatch Match" in the browser tab while enquiries are waiting
@@ -55,6 +57,14 @@ export default function App() {
             <h1 className="font-display text-xl leading-tight font-semibold tracking-tight text-ink">Swatch Match</h1>
             <p className="truncate text-xs text-muted">Buyer enquiry → shortlist from your own stock</p>
           </div>
+          <button
+            type="button"
+            onClick={() => setAboutOpen(true)}
+            className="flex shrink-0 items-center gap-1 rounded-full border border-line bg-card px-2.5 py-1 text-xs font-medium text-muted hover:text-ink"
+          >
+            <Icon name="info" className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">How it works</span>
+          </button>
           <StatusPill health={health} />
           {health?.login_required && (
             <button
@@ -106,6 +116,8 @@ export default function App() {
           <AuditLogPage active={tab === "log"} />
         </div>
       </main>
+
+      <AboutSheet open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
       {/* Bottom tab bar on phones: easy to reach with a thumb */}
       <nav
