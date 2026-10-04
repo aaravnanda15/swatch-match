@@ -50,3 +50,21 @@ def to_jpeg_bytes(img: Image.Image) -> bytes:
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=90)
     return buf.getvalue()
+
+
+def colour_profile(img: Image.Image):
+    """Cheap colour summary of the middle of a photo (edges are often background).
+    Returns {"brightness": 0-1, "hue": 0-360 or None if the cloth is mostly grey/white}."""
+    w, h = img.size
+    middle = img.crop((int(w * 0.2), int(h * 0.2), int(w * 0.8), int(h * 0.8))).resize((64, 64))
+    pixels = list(middle.convert("HSV").getdata())  # each value 0-255
+    brightness = sum(v for _, _, v in pixels) / len(pixels) / 255
+    # Most common hue among clearly coloured pixels, in 12 slices of 30 degrees
+    slices = [0] * 12
+    for hue, sat, val in pixels:
+        if sat > 64 and val > 50:
+            slices[hue * 12 // 256] += 1
+    hue = None
+    if sum(slices) > len(pixels) * 0.2:
+        hue = slices.index(max(slices)) * 30 + 15
+    return {"brightness": brightness, "hue": hue}

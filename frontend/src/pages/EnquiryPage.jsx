@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getSettings, sendEnquiry } from "../api.js";
+import { rupees } from "../format.js";
 import FallbackBanner from "../components/FallbackBanner.jsx";
-import ResultList from "../components/ResultList.jsx";
+import Icon from "../components/Icon.jsx";
+import ImageViewer from "../components/ImageViewer.jsx";
+import ResultCard from "../components/ResultCard.jsx";
 
 // Used until /api/settings answers (same values as config.yaml)
 const DEFAULT_SETTINGS = {
@@ -11,22 +14,14 @@ const DEFAULT_SETTINGS = {
 };
 
 // Tap one to fill the text box: shows staff the kinds of messages that work
-const EXAMPLES = ["red bandhani saree under 2000", "lal bandhani chahiye", "same design in blue"];
+const EXAMPLES = ["red bandhani saree under 2000", "lal bandhani chahiye", "लाल बांधनी साड़ी", "same design in blue"];
 
 const MODE_TEXT = {
-  image_only: "Photo only",
-  text_only: "Text only",
+  image_only: "Photo",
+  text_only: "Text",
   image_and_text: "Photo + text",
   vague: "Not clear yet",
 };
-
-// "red · bandhani · saree · up to ₹2000" from what the agent understood
-function describeQuery(query) {
-  const parts = Object.values(query.attributes);
-  if (query.max_rate) parts.push(`up to ₹${query.max_rate}`);
-  if (query.min_quantity) parts.push(`${query.min_quantity} pieces`);
-  return parts.join(" · ");
-}
 
 export default function EnquiryPage() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -36,7 +31,10 @@ export default function EnquiryPage() {
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
+  const [dragging, setDragging] = useState(false);
+  const [viewing, setViewing] = useState(null); // design shown full screen
   const fileInput = useRef(null);
+  const formRef = useRef(null);
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {}); // defaults are fine if this fails
@@ -49,31 +47,62 @@ export default function EnquiryPage() {
     };
   }, [preview]);
 
+  const acceptPhoto = useCallback(
+    (file) => {
+      // Check here first so the user gets an answer instantly. The server checks again.
+      if (!settings.allowed_types.includes(file.type)) {
+        setError("Please choose a JPG, PNG or WEBP photo. Other files (PDF, video, HEIC) cannot be matched.");
+        return;
+      }
+      if (file.size > settings.max_mb * 1024 * 1024) {
+        const mb = (file.size / 1024 / 1024).toFixed(1);
+        setError(`This photo is ${mb} MB. Please send one under ${settings.max_mb} MB.`);
+        return;
+      }
+      setError("");
+      setPhoto(file);
+      setPreview(URL.createObjectURL(file));
+    },
+    [settings]
+  );
+
+  // Paste a photo straight from WhatsApp Web (Ctrl/Cmd + V) while this page is open
+  useEffect(() => {
+    function onPaste(e) {
+      if (!formRef.current || formRef.current.offsetParent === null) return; // page hidden
+      const file = [...(e.clipboardData?.files || [])].find((f) => f.type.startsWith("image/"));
+      if (file) {
+        e.preventDefault();
+        acceptPhoto(file);
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, [acceptPhoto]);
+
   function pickPhoto(e) {
     const file = e.target.files[0];
     e.target.value = ""; // so picking the same file again still triggers a change
-    if (!file) return;
-    setResult(null);
+    if (file) acceptPhoto(file);
+  }
 
-    // Check here first so the user gets an answer instantly. The server checks again.
-    if (!settings.allowed_types.includes(file.type)) {
-      setError("Please choose a JPG, PNG or WEBP photo. Other files (PDF, video, HEIC) cannot be matched.");
-      return;
-    }
-    if (file.size > settings.max_mb * 1024 * 1024) {
-      const mb = (file.size / 1024 / 1024).toFixed(1);
-      setError(`This photo is ${mb} MB. Please send one under ${settings.max_mb} MB.`);
-      return;
-    }
-    setError("");
-    setPhoto(file);
-    setPreview(URL.createObjectURL(file));
+  function dropPhoto(e) {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) acceptPhoto(file);
   }
 
   function removePhoto() {
     setPhoto(null);
     setPreview("");
+  }
+
+  function startOver() {
+    removePhoto();
+    setText("");
     setResult(null);
+    setError("");
   }
 
   async function submit(e) {
@@ -83,7 +112,6 @@ export default function EnquiryPage() {
       return;
     }
     setError("");
-    setResult(null);
     setSending(true);
     try {
       setResult(await sendEnquiry(photo, text));
@@ -97,117 +125,254 @@ export default function EnquiryPage() {
   const tooLong = text.length > settings.max_text_chars;
 
   return (
-    <form onSubmit={submit} className="space-y-4">
-      <p className="text-sm text-stone-600">
-        Paste the buyer's photo, their message, or both. You get a shortlist from your catalogue.
-      </p>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
+      {/* ---------- The enquiry ---------- */}
+      <form ref={formRef} onSubmit={submit} className="space-y-4 lg:sticky lg:top-32">
+        <div>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">New enquiry</h2>
+          <p className="mt-1 text-sm text-muted">
+            Paste the buyer's photo, their message, or both. Get a shortlist from your own stock.
+          </p>
+        </div>
 
-      {/* Photo */}
-      <section className="rounded-xl border border-stone-200 bg-white p-3">
-        <h2 className="mb-2 text-sm font-medium text-stone-800">Photo</h2>
-        {preview ? (
-          <div className="flex items-start gap-3">
-            <img src={preview} alt="Buyer's photo" className="h-28 w-28 rounded-lg object-cover" />
-            <div className="min-w-0 flex-1 space-y-2 text-sm">
-              <p className="truncate text-stone-600">{photo.name}</p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => fileInput.current.click()}
-                  className="rounded-lg border border-stone-300 px-3 py-1.5 text-stone-700"
-                >
-                  Change
-                </button>
-                <button
-                  type="button"
-                  onClick={removePhoto}
-                  className="rounded-lg border border-stone-300 px-3 py-1.5 text-stone-700"
-                >
-                  Remove
-                </button>
+        <section className="rounded-2xl border border-line bg-card p-3 shadow-[0_1px_2px_rgb(35_29_24/0.05)]">
+          {preview ? (
+            <div className="flex items-center gap-3">
+              <img src={preview} alt="Buyer's photo" className="h-24 w-24 rounded-xl object-cover" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <p className="truncate text-sm font-medium text-ink">{photo.name || "Pasted photo"}</p>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => fileInput.current.click()}
+                    className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-ink hover:bg-paper"
+                  >
+                    Change
+                  </button>
+                  <button
+                    type="button"
+                    onClick={removePhoto}
+                    className="rounded-lg border border-line px-3 py-1.5 text-sm font-medium text-muted hover:bg-paper"
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => fileInput.current.click()}
-            className="w-full rounded-lg border-2 border-dashed border-stone-300 py-6 text-sm text-stone-600"
-          >
-            Choose or take a photo
-            <span className="mt-1 block text-xs text-stone-400">
-              JPG, PNG or WEBP, up to {settings.max_mb} MB
+          ) : (
+            <button
+              type="button"
+              onClick={() => fileInput.current.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={dropPhoto}
+              className={`flex w-full flex-col items-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-7 text-center transition-colors ${
+                dragging ? "border-indigo bg-indigo-soft" : "border-line hover:border-faint hover:bg-paper/60"
+              }`}
+            >
+              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-soft text-indigo">
+                <Icon name="camera" className="h-6 w-6" />
+              </span>
+              <span className="text-sm font-semibold text-ink">Add the buyer's photo</span>
+              <span className="text-xs text-muted">
+                Tap to choose, drop it here, or paste · JPG, PNG, WEBP up to {settings.max_mb} MB
+              </span>
+            </button>
+          )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept={settings.allowed_types.join(",")}
+            onChange={pickPhoto}
+            className="hidden"
+          />
+
+          <label htmlFor="enquiry-text" className="mt-4 mb-1.5 block text-sm font-semibold text-ink">
+            Buyer's message
+          </label>
+          <textarea
+            id="enquiry-text"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            placeholder="e.g. red bandhani under 2000 · English, हिंदी, ગુજરાતી or Hinglish"
+            className="w-full resize-y rounded-xl border border-line bg-paper/40 px-3 py-2.5 text-[15px] placeholder:text-faint focus:border-indigo focus:bg-card focus:outline-none"
+          />
+          <div className="mt-2 flex items-start justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {EXAMPLES.map((ex) => (
+                <button
+                  key={ex}
+                  type="button"
+                  onClick={() => setText(ex)}
+                  className="rounded-full border border-line bg-paper px-2.5 py-1 text-xs text-muted hover:border-faint hover:text-ink"
+                >
+                  {ex}
+                </button>
+              ))}
+            </div>
+            <span className={`shrink-0 pt-1 text-xs tabular-nums ${tooLong ? "text-madder" : "text-faint"}`}>
+              {text.length}/{settings.max_text_chars}
             </span>
-          </button>
-        )}
-        <input
-          ref={fileInput}
-          type="file"
-          accept={settings.allowed_types.join(",")}
-          onChange={pickPhoto}
-          className="hidden"
-        />
-      </section>
-
-      {/* Text */}
-      <section className="rounded-xl border border-stone-200 bg-white p-3">
-        <label htmlFor="enquiry-text" className="mb-2 block text-sm font-medium text-stone-800">
-          Message
-        </label>
-        <textarea
-          id="enquiry-text"
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setResult(null);
-          }}
-          rows={3}
-          placeholder="e.g. red bandhani under 2000, ya Hindi / Gujarati mein"
-          className="w-full rounded-lg border border-stone-300 px-3 py-2 text-sm"
-        />
-        <div className="mt-1 flex items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-1">
-            {EXAMPLES.map((ex) => (
-              <button
-                key={ex}
-                type="button"
-                onClick={() => setText(ex)}
-                className="rounded-full bg-stone-100 px-2 py-0.5 text-xs text-stone-600"
-              >
-                {ex}
-              </button>
-            ))}
           </div>
-          <span className={`shrink-0 text-xs ${tooLong ? "text-red-600" : "text-stone-400"}`}>
-            {text.length}/{settings.max_text_chars}
-          </span>
+        </section>
+
+        {error && (
+          <p role="alert" className="flex gap-2 rounded-xl border border-madder/30 bg-madder-soft px-3 py-2.5 text-sm text-madder-dark">
+            <Icon name="alert" className="mt-px h-4 w-4 shrink-0" />
+            {error}
+          </p>
+        )}
+
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={sending || tooLong}
+            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-madder py-3.5 text-[15px] font-semibold text-white shadow-sm transition-colors hover:bg-madder-dark disabled:opacity-50"
+          >
+            <Icon name="search" className="h-5 w-5" />
+            {sending ? "Finding matches…" : "Find matches"}
+          </button>
+          {(result || photo || text) && (
+            <button
+              type="button"
+              onClick={startOver}
+              className="rounded-xl border border-line bg-card px-4 text-sm font-medium text-muted hover:text-ink"
+            >
+              Clear
+            </button>
+          )}
         </div>
+      </form>
+
+      {/* ---------- The shortlist ---------- */}
+      <section aria-live="polite" className="min-w-0">
+        {sending ? (
+          <LoadingCards />
+        ) : result ? (
+          <Shortlist result={result} onOpenImage={setViewing} />
+        ) : (
+          <EmptyState />
+        )}
       </section>
 
-      {error && (
-        <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {error}
+      <ImageViewer design={viewing} onClose={() => setViewing(null)} />
+    </div>
+  );
+}
+
+function Shortlist({ result, onOpenImage }) {
+  const understood = Object.values(result.query.attributes);
+  if (result.query.max_rate) understood.push(`up to ${rupees(result.query.max_rate)}`);
+  if (result.query.min_quantity) understood.push(`${result.query.min_quantity} pcs`);
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="font-display text-xl font-semibold tracking-tight">Shortlist</h2>
+        <p className="text-xs text-faint">
+          Enquiry #{result.enquiry_id} · {MODE_TEXT[result.mode]}
+        </p>
+      </div>
+
+      {understood.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-muted">Understood:</span>
+          {understood.map((u) => (
+            <span key={u} className="rounded-full bg-indigo-soft px-2 py-0.5 font-medium text-indigo">
+              {u}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {result.fallback_mode && <FallbackBanner reason={result.fallback_reason} />}
+
+      {result.no_match && result.results.length > 0 && (
+        <div className="flex gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-sm">
+          <Icon name="box" className="mt-px h-5 w-5 shrink-0 text-muted" />
+          <p>
+            <span className="font-semibold">No close match in stock.</span>{" "}
+            <span className="text-muted">These are the nearest alternatives. Tell the buyer honestly.</span>
+          </p>
+        </div>
+      )}
+
+      {result.results.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">
+          Nothing in stock fits
+          {result.query.max_rate ? ` within ${rupees(result.query.max_rate)}` : ""}.
+          {result.over_budget_removed > 0 && ` ${result.over_budget_removed} designs were over budget.`}
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {result.results.map((r, i) => (
+            <ResultCard
+              key={r.design_id}
+              result={r}
+              rank={i + 1}
+              onOpenImage={onOpenImage}
+              style={{ animationDelay: `${i * 50}ms` }}
+            />
+          ))}
+        </div>
+      )}
+
+      {result.over_budget_removed > 0 && result.results.length > 0 && (
+        <p className="text-xs text-faint">
+          {result.over_budget_removed} closer designs were hidden because they cost more than{" "}
+          {rupees(result.query.max_rate)}.
         </p>
       )}
+    </div>
+  );
+}
 
-      <button
-        type="submit"
-        disabled={sending || tooLong}
-        className="w-full rounded-lg bg-rose-700 py-3 text-sm font-semibold text-white disabled:opacity-50"
-      >
-        {sending ? "Finding matches..." : "Find matches"}
-      </button>
+function EmptyState() {
+  const steps = [
+    ["photo", "Add what the buyer sent", "A photo, a message, or both."],
+    ["search", "Get a shortlist", "Top 5 from your catalogue with stock and rate."],
+    ["check", "Pick, edit, approve", "Copy a ready reply. Nothing is sent by itself."],
+  ];
+  return (
+    <div className="rounded-2xl border border-dashed border-line px-5 py-8">
+      <ol className="space-y-5">
+        {steps.map(([icon, title, body], i) => (
+          <li key={title} className="flex gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card text-indigo ring-1 ring-line">
+              <Icon name={icon} className="h-[18px] w-[18px]" />
+            </span>
+            <div>
+              <p className="text-sm font-semibold text-ink">
+                {i + 1}. {title}
+              </p>
+              <p className="text-sm text-muted">{body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
 
-      {result && (
-        <section className="space-y-2">
-          {result.fallback_mode && <FallbackBanner reason={result.fallback_reason} />}
-          <p className="text-xs text-stone-500">
-            Enquiry #{result.enquiry_id} · {MODE_TEXT[result.mode]}
-            {describeQuery(result.query) && <> · Understood: {describeQuery(result.query)}</>}
-          </p>
-          <ResultList results={result.results} />
-        </section>
-      )}
-    </form>
+function LoadingCards() {
+  return (
+    <div className="space-y-2.5" aria-label="Finding matches">
+      <div className="h-7 w-32 animate-pulse rounded-lg bg-line/70" />
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="flex gap-3 rounded-2xl border border-line bg-card p-3">
+          <div className="h-28 w-24 animate-pulse rounded-xl bg-line/70" />
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="h-4 w-24 animate-pulse rounded bg-line/70" />
+            <div className="h-4 w-3/4 animate-pulse rounded bg-line/70" />
+            <div className="h-3 w-full animate-pulse rounded bg-line/50" />
+            <div className="h-3 w-1/2 animate-pulse rounded bg-line/50" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }

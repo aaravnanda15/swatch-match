@@ -1,3 +1,3 @@
 export default function AuditLogPage() {
-  return <p className="text-sm text-stone-500">Audit log comes in step 8.</p>;
+  return <p className="text-sm text-muted">The approved-replies log is added in step 8.</p>;
 }

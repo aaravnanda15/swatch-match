@@ -1,1 +1,78 @@
 @import "tailwindcss";
+
+/* Swatch Match colours and fonts. Use them as Tailwind classes:
+   bg-paper, text-ink, bg-madder, text-indigo, border-line, font-display ... */
+@theme {
+  --font-sans: "Inter", "Noto Sans Devanagari", "Noto Sans Gujarati", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+
+  --color-paper: #f7f3ec; /* page background, like unbleached cotton */
+  --color-card: #fffdf9;
+  --color-line: #e7dfd2; /* borders */
+  --color-ink: #231d18; /* main text */
+  --color-muted: #6f655b; /* secondary text */
+  --color-faint: #a3998d;
+
+  --color-madder: #b3322b; /* main action colour (madder red dye) */
+  --color-madder-dark: #8f2520;
+  --color-madder-soft: #f8e4e1;
+  --color-indigo: #2e3a75; /* indigo dye */
+  --color-indigo-soft: #e6e9f6;
+  --color-saffron: #e9a23b;
+  --color-saffron-soft: #fcefd6;
+  --color-leaf: #2f7a4f;
+  --color-leaf-soft: #e1f1e6;
+}
+
+html {
+  background: var(--color-paper);
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Subtle woven texture behind the header */
+.weave {
+  background-color: var(--color-paper);
+  background-image:
+    repeating-linear-gradient(90deg, rgb(46 58 117 / 0.035) 0 1px, transparent 1px 6px),
+    repeating-linear-gradient(0deg, rgb(179 50 43 / 0.03) 0 1px, transparent 1px 6px);
+}
+
+/* Keyboard focus that is easy to see */
+:focus-visible {
+  outline: 2px solid var(--color-indigo);
+  outline-offset: 2px;
+}
+
+/* Gentle entrance for results */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.28s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise {
+    animation: none;
+  }
+}
+
+/* Safe area for phones with a home bar */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}

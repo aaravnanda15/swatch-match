@@ -1,0 +1,31 @@
+design_id,garment_type,main_colour,secondary_colour,pattern,border,fabric,work_type
+D001,dupatta,purple,red,bandhani,embroidered,georgette,sequins
+D002,fabric,orange,white,bandhani,none,cotton,none
+D003,saree,gold,red,plain,zari,silk,zari weave
+D004,fabric,brown,gold,ikat,other,cotton,none
+D005,saree,blue,white,polka dots,other,cotton,none
+D006,dupatta,pink,gold,geometric,embroidered,cotton,embroidery
+D007,saree,red,gold,paisley,zari,silk,zari weave
+D008,fabric,yellow,orange,stripes,none,cotton,none
+D009,dupatta,pink,white,bandhani,none,chiffon,none
+D010,dupatta,blue,red,bandhani,none,silk,none
+D011,saree,multicolour,orange,paisley,contrast,silk,zari weave
+D012,saree,maroon,gold,patola,none,silk,none
+D013,saree,multicolour,red,floral,none,cotton,none
+D014,dupatta,multicolour,black,geometric,embroidered,cotton,embroidery
+D015,dress material,red,black,geometric,none,cotton,mirror work
+D016,dupatta,blue,white,bandhani,none,cotton,none
+D017,dupatta,purple,red,bandhani,embroidered,georgette,sequins
+D018,saree,multicolour,orange,paisley,contrast,silk,zari weave
+D019,fabric,red,cream,ikat,other,silk,none
+D020,saree,black,gold,floral,zari,cotton,zari weave
+D021,dupatta,cream,red,floral,contrast,cotton,embroidery
+D022,saree,black,gold,geometric,none,cotton,zari weave
+D023,dupatta,green,yellow,bandhani,none,cotton,none
+D024,dupatta,orange,red,bandhani,none,georgette,none
+D025,saree,multicolour,gold,plain,zari,silk,zari weave
+D026,fabric,black,cream,stripes,none,cotton,none
+D027,saree,black,gold,floral,none,cotton,zari weave
+D028,fabric,cream,pink,geometric,none,cotton,embroidery
+D029,fabric,purple,gold,plain,none,silk,none
+D030,fabric,multicolour,red,bandhani,none,cotton,none

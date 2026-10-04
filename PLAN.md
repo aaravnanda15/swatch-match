@@ -121,3 +121,4 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Step 2 done: Enquiry screen + POST /api/enquiry (validation, saves upload, enquiries table), GET /api/settings.
 - Step 3 done: agent tools, orchestrator (photo+text narrows to 10 lookalikes, then words re-rank), lexicon fallback, CLIP ranges in config.
 - User asked to finish the whole app with polished styling (steps 4-9).
+- Step 4 done: labels, computed reasons, shade note, no-match; curated catalogue/tags.csv; evaluate.py 29/32 top-1, 31/32 top-5 (fallback mode); new visual design (paper/indigo/madder, Fraunces + Inter).

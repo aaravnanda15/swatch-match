@@ -47,7 +47,7 @@ WORDS = {
         ("stripes", ["stripes", "striped", "stripe", "lining", "dhari", "धारी", "पट्टी", "પટ્ટા"]),
         ("polka dots", ["polka", "polka dots", "dots", "dotted", "बिंदी"]),
         ("patola", ["patola", "पटोला", "પટોળા", "પટોળું"]),
-        ("ikat", ["ikat", "ikkat", "pochampally", "इकत"]),
+        ("ikat", ["ikat", "ikkat", "pochampally", "इकत", "ઇકત"]),
         ("block print", ["block print", "block printed", "hand block", "bagru", "sanganeri", "dabu", "ajrakh",
                          "ब्लॉक प्रिंट", "બ્લોક પ્રિન્ટ"]),
         ("abstract", ["abstract"]),

@@ -3,8 +3,9 @@
     python -m backend.ingest            add new designs, refresh stock and rates
     python -m backend.ingest --retag    re-tag every design (keeps staff edits)
 
-Steps: read stock.csv -> save designs + stock -> CLIP embedding for each new
-photo -> tags (Gemini, or CLIP fallback) for each untagged design.
+Steps: read stock.csv -> save designs + stock -> staff tags from the optional
+catalogue/tags.csv -> CLIP embedding for each new photo -> tags (Gemini, or
+CLIP fallback) for each design still untagged.
 Safe to run again: work already done is skipped.
 """
 
@@ -64,6 +65,25 @@ def read_stock_csv():
     return rows
 
 
+def load_tags_csv(known_ids):
+    path = CATALOGUE_DIR / "tags.csv"
+    if not path.exists():
+        return
+    loaded = 0
+    with open(path, newline="", encoding="utf-8-sig") as f, db.connect() as conn:
+        for line_no, row in enumerate(csv.DictReader(f), start=2):
+            design_id = (row.get("design_id") or "").strip()
+            tags = tagging.clean_tags(row)
+            if design_id not in known_ids or tags is None:
+                print(f"  ! tags.csv line {line_no}: unknown design or a value outside config.yaml, skipped")
+                continue
+            if db.get_tag_source(conn, design_id) != "manual":
+                db.save_tags(conn, design_id, tags, "manual")
+                loaded += 1
+    if loaded:
+        print(f"tags.csv: {loaded} designs tagged by staff")
+
+
 def ingest(retag=False):
     db.init_db()
     rows = read_stock_csv()
@@ -76,6 +96,10 @@ def ingest(retag=False):
         gone = db.remove_designs_not_in(conn, {r["design_id"] for r in rows})
     if gone:
         print(f"Removed {len(gone)} designs no longer in stock.csv")
+
+    # 1b. Staff tags from catalogue/tags.csv (optional). They count as checked
+    #     by staff; edits made later in the app are never overwritten.
+    load_tags_csv({r["design_id"] for r in rows})
 
     # 2. Work out what still needs doing
     with db.connect() as conn:

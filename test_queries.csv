@@ -1,0 +1,33 @@
+query_image,query_text,expected_design_id
+q_D002.jpg,,D002
+q_D003.jpg,,D003
+q_D005.jpg,,D005
+q_D007.jpg,,D007
+q_D009.jpg,,D009
+q_D012.jpg,,D012
+q_D014.jpg,,D014
+q_D016.jpg,,D016
+q_D019.jpg,,D019
+q_D020.jpg,,D020
+q_D022.jpg,,D022
+q_D023.jpg,,D023
+q_D026.jpg,,D026
+q_D028.jpg,,D028
+q_D030.jpg,,D030
+q_D010_text.jpg,isme blue wala silk chahiye,D010
+q_D024_text.jpg,same orange dupatta,D024
+,red mysore silk saree with gold paisley border,D007
+,pink bandhani chiffon dupatta,D009
+,neela bandhani dupatta cotton ka,D016
+,green bandhani dupatta,D023
+,maroon patola saree,D012
+,black jamdani saree with gold zari,D020|D022|D027
+,पीला धारी वाला कपड़ा,D008
+,phulkari dupatta pink embroidery,D006
+,black striped cotton fabric,D026
+,mirror work dress material,D015
+,orange bandhani georgette dupatta,D024
+,લાલ ઇકત કાપડ,D019
+,purple plain silk fabric,D029
+,gold silk saree with zari border,D003|D025
+,cream dupatta with red flowers,D021

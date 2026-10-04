@@ -6,21 +6,26 @@ Clarifying question and draft reply tools are added in steps 5 and 6.
 
 import numpy as np
 
-from backend import db, embeddings, llm
+from backend import db, embeddings, llm, tagging
 from backend.agent import lexicon, scoring
-from backend.config import ATTRIBUTES
+from backend.config import ATTRIBUTES, CATALOGUE_DIR
+from backend.images import colour_profile, load_image_file
 
 LANGUAGES = ("en", "hi", "gu", "hinglish")
 
 
-def image_search(img):
+def encode_photo(img):
+    """The buyer's photo as a CLIP vector (used by image_search and describe_photo)."""
+    return embeddings.encode_images([img])[0]
+
+
+def image_search(query_vector):
     """Compare the buyer's photo with every catalogue photo.
     Returns {design_id: similarity 0-1}."""
     ids, matrix = db.load_embeddings()
     if not ids:
         return {}
-    query = embeddings.encode_images([img])[0]
-    raw = matrix @ query
+    raw = matrix @ query_vector
     return {d: scoring.stretch(float(s), scoring.SCORING["image_range"]) for d, s in zip(ids, raw)}
 
 
@@ -54,6 +59,32 @@ def parse_text_to_attributes(text):
         result["language"] = answer["language"]
     result["source"] = "gemini"
     return result
+
+
+def describe_photo(img, query_vector):
+    """Tags (Gemini, or CLIP if Gemini is off/fails) and a colour summary of the
+    buyer's photo, so reasons can say "same pattern and border, shade darker".
+    Returns {"tags", "colour", "source", "llm_failed"}."""
+    tags, source = tagging.tag_image(img, query_vector)
+    provider = llm.get_llm()
+    return {
+        "tags": tags,
+        "colour": colour_profile(img),
+        "source": source,
+        "llm_failed": provider.available and source != "gemini",
+    }
+
+
+# Colour summaries of catalogue photos, worked out once per file
+_design_colours = {}
+
+
+def design_colour(image_file):
+    path = CATALOGUE_DIR / image_file
+    key = (image_file, path.stat().st_mtime)
+    if key not in _design_colours:
+        _design_colours[key] = colour_profile(load_image_file(path))
+    return _design_colours[key]
 
 
 def _positive_number(value):

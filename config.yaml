@@ -39,7 +39,8 @@ scoring:
   # Photo + text: only the designs that look most like the photo are
   # considered, then the words re-rank them ("this design but in blue").
   image_pool: 10
-  # Labels shown on each result card. Tuned in step 4 with evaluate.py.
+  # Labels shown on each result card. Checked with evaluate.py on the sample
+  # data: right first results score median 0.87, wrong ones at most 0.69.
   thresholds:
     very_close: 0.80
     similar: 0.65
