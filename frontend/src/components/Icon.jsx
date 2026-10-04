@@ -82,6 +82,13 @@ const PATHS = {
     </>
   ),
   back: <path d="M15 6l-6 6 6 6" />,
+  chart: (
+    <>
+      <path d="M4 20h16" />
+      <path d="M7 16v-5M12 16V7M17 16v-8" />
+    </>
+  ),
+  trend: <path d="M4 17l5-5 4 4 7-8M15 8h5v5" />,
   send: <path d="M4 12 20 4l-4 16-4-6.5zM12 13.5 20 4" />,
   refresh: (
     <>

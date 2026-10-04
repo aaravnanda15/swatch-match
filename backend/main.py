@@ -9,17 +9,24 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import auth, db, demo, embeddings, enquiries, inbox, llm, whatsapp
+from backend import auth, db, demo, demo_history, embeddings, enquiries, inbox, insights, llm, whatsapp
 from backend.agent import templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, DEMO_MODE, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, load_image_file, to_jpeg_bytes
 from backend.tagging import clean_tags
 
 
+def _warm_up():
+    """Load CLIP so the first enquiry is not slow; in demo mode also add the
+    sample week if it is missing (Cloud Run starts with a fresh disk)."""
+    embeddings.get_model()
+    if DEMO_MODE and db.count_samples() == 0:
+        print(f"[demo] added {demo_history.seed()} sample enquiries for the Insights tab")
+
+
 @asynccontextmanager
 async def lifespan(app):
-    # Load CLIP in the background so the first enquiry is not slow
-    threading.Thread(target=embeddings.get_model, daemon=True).start()
+    threading.Thread(target=_warm_up, daemon=True).start()
     yield
 
 
@@ -327,6 +334,29 @@ def whatsapp_send(req: SendRequest):
         "failed_photos": failed,
         "dry_run": whatsapp.dry_run(),
     }
+
+
+# ---------- Insights ----------
+
+@app.get("/api/insights")
+def insights_view(days: int = 7, tz_offset: int = 330):
+    """Numbers for the Insights tab. tz_offset = the shop's minutes ahead of UTC (India: 330)."""
+    return insights.compute(days=max(1, min(days, 90)), tz_offset_minutes=tz_offset)
+
+
+@app.post("/api/demo/history")
+def demo_history_add():
+    if not DEMO_MODE:
+        raise HTTPException(404, "Demo mode is off")
+    if db.count_samples() == 0:
+        demo_history.seed()
+    return {"sample_count": db.count_samples()}
+
+
+@app.delete("/api/demo/history")
+def demo_history_clear():
+    db.delete_samples()
+    return {"sample_count": 0}
 
 
 # ---------- Demo helpers ----------

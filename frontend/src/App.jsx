@@ -6,11 +6,13 @@ import EnquiryPage from "./pages/EnquiryPage.jsx";
 import CataloguePage from "./pages/CataloguePage.jsx";
 import AuditLogPage from "./pages/AuditLogPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
+import InsightsPage from "./pages/InsightsPage.jsx";
 
 const ALL_TABS = [
   { id: "inbox", label: "Inbox", icon: "inbox", whatsappOnly: true },
   { id: "enquiry", label: "Enquiry", icon: "enquiry" },
   { id: "catalogue", label: "Catalogue", icon: "catalogue" },
+  { id: "insights", label: "Insights", icon: "chart" },
   { id: "log", label: "Log", icon: "log" },
 ];
 
@@ -96,6 +98,9 @@ export default function App() {
         </div>
         <div hidden={tab !== "catalogue"}>
           <CataloguePage />
+        </div>
+        <div hidden={tab !== "insights"}>
+          <InsightsPage active={tab === "insights"} demoMode={Boolean(health?.demo_mode)} />
         </div>
         <div hidden={tab !== "log"}>
           <AuditLogPage active={tab === "log"} />

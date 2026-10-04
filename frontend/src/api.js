@@ -139,3 +139,17 @@ export function simulateBuyer(scenarioId) {
     body: JSON.stringify({ scenario_id: scenarioId }),
   });
 }
+
+// Shop's offset from UTC in minutes (India = 330), so days match the shop's calendar
+export function getInsights(days = 7) {
+  const tz = -new Date().getTimezoneOffset();
+  return request(`/api/insights?days=${days}&tz_offset=${tz}`);
+}
+
+export function addSampleHistory() {
+  return request("/api/demo/history", { method: "POST" });
+}
+
+export function clearSampleHistory() {
+  return request("/api/demo/history", { method: "DELETE" });
+}

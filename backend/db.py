@@ -86,11 +86,13 @@ NEW_COLUMNS = {
         "wa_message_id": "TEXT",
         "status": "TEXT",  # WhatsApp only: 'new', 'sent' or 'dismissed'
         "sent_at": "TEXT",
+        "is_sample": "INTEGER NOT NULL DEFAULT 0",  # demo history, see backend/demo_history.py
     },
     "audit_log": {
         "sent_via": "TEXT NOT NULL DEFAULT 'copy'",  # 'copy' or 'whatsapp'
         "wa_sent_ids": "TEXT",
         "enquiry_id": "INTEGER",
+        "is_sample": "INTEGER NOT NULL DEFAULT 0",
     },
 }
 
@@ -286,7 +288,7 @@ def list_inbox(limit=100):
     with connect() as conn:
         rows = conn.execute(
             "SELECT id, created_at, text, image_file, mode, buyer_phone, buyer_name, status, sent_at "
-            "FROM enquiries WHERE source = 'whatsapp' ORDER BY id DESC LIMIT ?",
+            "FROM enquiries WHERE source = 'whatsapp' AND is_sample = 0 ORDER BY id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
@@ -325,7 +327,9 @@ def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sen
 def list_audit(limit=200):
     """Newest first."""
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        rows = conn.execute(
+            "SELECT * FROM audit_log WHERE is_sample = 0 ORDER BY id DESC LIMIT ?", (limit,)
+        ).fetchall()
     entries = []
     for row in rows:
         entry = dict(row)
@@ -333,3 +337,37 @@ def list_audit(limit=200):
         entry["picked"] = json.loads(entry.pop("picked_json") or "[]")
         entries.append(entry)
     return entries
+
+
+# ---------- insights ----------
+
+def insight_rows(since_sqlite_time):
+    """Enquiries since a time, with the time of their first approved reply."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT e.id, e.created_at, e.mode, e.source, e.is_sample, e.answer_json, "
+            "MIN(a.created_at) AS replied_at "
+            "FROM enquiries e LEFT JOIN audit_log a ON a.enquiry_id = e.id "
+            "WHERE e.created_at >= ? GROUP BY e.id ORDER BY e.id",
+            (since_sqlite_time,),
+        ).fetchall()
+        offered = conn.execute(
+            "SELECT picked_json FROM audit_log WHERE created_at >= ?", (since_sqlite_time,)
+        ).fetchall()
+    enquiries = []
+    for r in rows:
+        item = dict(r)
+        item["answer"] = json.loads(item.pop("answer_json") or "null")
+        enquiries.append(item)
+    return enquiries, [json.loads(r["picked_json"] or "[]") for r in offered]
+
+
+def count_samples():
+    with connect() as conn:
+        return conn.execute("SELECT COUNT(*) AS n FROM enquiries WHERE is_sample = 1").fetchone()["n"]
+
+
+def delete_samples():
+    with connect() as conn:
+        conn.execute("DELETE FROM audit_log WHERE is_sample = 1")
+        conn.execute("DELETE FROM enquiries WHERE is_sample = 1")

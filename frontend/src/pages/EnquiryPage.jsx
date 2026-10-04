@@ -123,7 +123,7 @@ export default function EnquiryPage() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       {/* ---------- The enquiry ---------- */}
-      <form ref={formRef} onSubmit={submit} className="space-y-4 lg:sticky lg:top-32">
+      <form ref={formRef} onSubmit={submit} className="min-w-0 space-y-4 lg:sticky lg:top-32">
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">New enquiry</h2>
           <p className="mt-1 text-sm text-muted">

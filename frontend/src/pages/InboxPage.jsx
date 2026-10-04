@@ -308,7 +308,7 @@ function DemoPanel({ onSimulate, waiting }) {
   if (scenarios.length === 0) return null;
 
   return (
-    <section className="rounded-2xl border border-indigo/25 bg-indigo-soft/50 p-3">
+    <section className="min-w-0 rounded-2xl border border-indigo/25 bg-indigo-soft/50 p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-semibold text-indigo">
           <Icon name="sparkle" className="h-4 w-4" />
@@ -318,7 +318,7 @@ function DemoPanel({ onSimulate, waiting }) {
           Demo · nothing is really sent
         </span>
       </div>
-      <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+      <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {scenarios.map((s) => {
           const busy = waiting && !waiting.openedId && waiting.buyer === s.buyer;
           return (
@@ -327,7 +327,7 @@ function DemoPanel({ onSimulate, waiting }) {
               type="button"
               onClick={() => onSimulate(s)}
               disabled={Boolean(waiting && !waiting.openedId)}
-              className="flex items-center gap-2.5 rounded-xl bg-card p-2 text-left ring-1 ring-line transition hover:ring-indigo/50 disabled:opacity-60"
+              className="flex w-full min-w-0 items-center gap-2.5 rounded-xl bg-card p-2 text-left ring-1 ring-line transition hover:ring-indigo/50 disabled:opacity-60"
             >
               {s.photo ? (
                 <img src={samplePhotoUrl(s.photo)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />

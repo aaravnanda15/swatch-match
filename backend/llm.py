@@ -13,7 +13,9 @@ so stock numbers and rates never come from the LLM.
 
 import json
 import re
+import threading
 import time
+from contextlib import contextmanager
 
 from backend.config import ATTRIBUTES, CONFIG, GEMINI_API_KEY
 
@@ -161,11 +163,26 @@ class GeminiProvider:
 
 
 _llm = None
+_thread = threading.local()  # per-thread "AI off" switch, see offline()
+
+
+@contextmanager
+def offline():
+    """Inside `with llm.offline():` this thread uses no LLM (keyword list and
+    CLIP only). Used to generate sample data quickly without using AI quota;
+    other threads, i.e. real requests, are not affected."""
+    _thread.off = True
+    try:
+        yield
+    finally:
+        _thread.off = False
 
 
 def get_llm():
     """The LLM the app should use. Same object every time."""
     global _llm
+    if getattr(_thread, "off", False):
+        return NullProvider()
     if _llm is None:
         if CONFIG["llm"]["provider"] == "gemini" and GEMINI_API_KEY:
             _llm = GeminiProvider(GEMINI_API_KEY)
