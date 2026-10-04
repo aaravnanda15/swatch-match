@@ -10,6 +10,7 @@ Tables:
               agent's answer; WhatsApp enquiries also have the buyer and a status)
   wa_seen     every WhatsApp message id received, so Meta's retries are ignored
   stock_changes  every stock / rate edit made by staff in the app
+  chat_messages  the WhatsApp conversation with each buyer, both directions
   audit_log   approved replies (filled in step 6)
 """
 
@@ -55,6 +56,15 @@ CREATE TABLE IF NOT EXISTS wa_seen (
     message_id  TEXT PRIMARY KEY,
     phone       TEXT NOT NULL,
     received_at INTEGER NOT NULL      -- unix seconds
+);
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    phone      TEXT NOT NULL,
+    direction  TEXT NOT NULL,          -- 'in' from the buyer, 'out' from the shop
+    text       TEXT,
+    image_ref  TEXT,                   -- 'upload:<file>' or 'catalogue:<file>'
+    caption    TEXT
 );
 CREATE TABLE IF NOT EXISTS stock_changes (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -397,3 +407,27 @@ def delete_samples():
     with connect() as conn:
         conn.execute("DELETE FROM audit_log WHERE is_sample = 1")
         conn.execute("DELETE FROM enquiries WHERE is_sample = 1")
+
+
+# ---------- conversation with each buyer ----------
+
+def add_chat(phone, direction, text=None, image_ref=None, caption=None):
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO chat_messages (phone, direction, text, image_ref, caption) VALUES (?, ?, ?, ?, ?)",
+            (phone, direction, text, image_ref, caption),
+        )
+
+
+def list_chat(phone, after_id=0):
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM chat_messages WHERE phone = ? AND id > ? ORDER BY id", (phone, after_id)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_chat_message(message_id):
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM chat_messages WHERE id = ?", (message_id,)).fetchone()
+    return dict(row) if row else None

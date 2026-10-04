@@ -14,8 +14,9 @@ from backend.config import STAFF_PASSCODE
 
 COOKIE = "sm_staff"
 COOKIE_DAYS = 30
-# Routes anyone may call: health check, login itself and Meta's webhook
-PUBLIC = ("/api/health", "/api/login", "/api/logout", "/api/whatsapp/webhook")
+# Routes anyone may call: health check, login itself, Meta's webhook, and the
+# demo buyer chat (those routes refuse to work unless DEMO_MODE is on)
+PUBLIC = ("/api/health", "/api/login", "/api/logout", "/api/whatsapp/webhook", "/api/demo/chat", "/api/demo/photos")
 
 
 def login_required():

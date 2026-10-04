@@ -40,18 +40,25 @@ def handle_message(m):
     text = (m["text"] or "").strip()[:MAX_TEXT]
 
     if m["type"] == "unsupported":
-        return _save_unsupported(buyer, f"[{m['original_type'] or 'message'}: not a photo or text]")
+        note = f"[{m['original_type'] or 'message'}: not a photo or text]"
+        db.add_chat(m["phone"], "in", text=note)
+        return _save_unsupported(buyer, note)
 
     img, image_file = None, None
     if m["type"] == "image":
         try:
-            img = load_image(whatsapp.download_media(m["media_id"]))
+            # The buyer chat simulator hands over the photo directly
+            data = m.get("image_bytes") or whatsapp.download_media(m["media_id"])
+            img = load_image(data)
         except (whatsapp.WhatsAppError, BadImage) as e:
-            return _save_unsupported(buyer, f"[photo could not be used: {e}]")
+            note = f"[photo could not be used: {e}]"
+            db.add_chat(m["phone"], "in", text=note)
+            return _save_unsupported(buyer, note)
         image_file = enquiries.save_upload(img)
 
     if img is None and not text:
         return "empty, ignored"
+    db.add_chat(m["phone"], "in", text=text or None, image_ref=f"upload:{image_file}" if image_file else None)
 
     # Same buyer, a moment ago, still waiting: merge photo and text
     since = (datetime.now(timezone.utc) - timedelta(seconds=MERGE_SECONDS)).strftime("%Y-%m-%d %H:%M:%S")

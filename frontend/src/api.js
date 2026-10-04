@@ -162,3 +162,21 @@ export function saveStock(designId, quantity, rate) {
     body: JSON.stringify({ quantity_available: quantity, rate }),
   });
 }
+
+// ---- Buyer chat simulator (demo mode) ----
+export function chatSend(phone, name, text, photo) {
+  const form = new FormData();
+  form.append("phone", phone);
+  form.append("name", name);
+  form.append("text", text);
+  if (photo) form.append("image", photo);
+  return request("/api/demo/chat/send", { method: "POST", body: form });
+}
+
+export function chatMessages(phone, after = 0) {
+  return request(`/api/demo/chat/${encodeURIComponent(phone)}?after=${after}`);
+}
+
+export function getInboxChat(id) {
+  return request(`/api/inbox/${id}/chat`);
+}

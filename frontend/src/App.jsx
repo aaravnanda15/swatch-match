@@ -8,6 +8,7 @@ import CataloguePage from "./pages/CataloguePage.jsx";
 import AuditLogPage from "./pages/AuditLogPage.jsx";
 import InboxPage from "./pages/InboxPage.jsx";
 import InsightsPage from "./pages/InsightsPage.jsx";
+import BuyerChat from "./pages/BuyerChat.jsx";
 
 const ALL_TABS = [
   { id: "inbox", label: "Inbox", icon: "inbox", whatsappOnly: true },
@@ -23,6 +24,13 @@ export default function App() {
   const [needsLogin, setNeedsLogin] = useState(false);
   const [newCount, setNewCount] = useState(0); // WhatsApp enquiries waiting
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [hash, setHash] = useState(window.location.hash); // "#buyer" = buyer chat page
+
+  useEffect(() => {
+    const onHash = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const onNewCount = useCallback((n) => setNewCount(n), []);
 
   // "(2) Swatch Match" in the browser tab while enquiries are waiting
@@ -43,6 +51,7 @@ export default function App() {
     return () => window.removeEventListener("auth-required", onAuth);
   }, []);
 
+  if (hash === "#buyer") return <BuyerChat />; // buyers never see the staff screens
   if (needsLogin) return <LoginScreen />;
 
   const whatsapp = Boolean(health?.whatsapp_configured);

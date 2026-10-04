@@ -117,9 +117,10 @@ def download_media(media_id):
         raise WhatsAppError(f"Could not download the buyer's photo ({type(e).__name__}).")
 
 
-def _post_message(body):
-    """Send one message; returns WhatsApp's message id."""
-    if dry_run():
+def _post_message(body, simulated=False):
+    """Send one message; returns WhatsApp's message id.
+    simulated=True: the buyer is a demo buyer, so never call Meta."""
+    if dry_run() or simulated:
         print(f"[whatsapp DRY RUN] to {body['to']}: {body.get('type')} {body.get('text') or body.get('image')}")
         return f"dry-{uuid.uuid4().hex[:12]}"
     try:
@@ -141,14 +142,14 @@ def _post_message(body):
     return resp.json()["messages"][0]["id"]
 
 
-def send_text(to, text):
-    return _post_message({"to": to, "type": "text", "text": {"body": text, "preview_url": False}})
+def send_text(to, text, simulated=False):
+    return _post_message({"to": to, "type": "text", "text": {"body": text, "preview_url": False}}, simulated)
 
 
-def send_image(to, jpeg_bytes, filename, caption):
+def send_image(to, jpeg_bytes, filename, caption, simulated=False):
     """Upload a photo (JPEG bytes) to WhatsApp, then send it with a caption."""
-    if dry_run():
-        return _post_message({"to": to, "type": "image", "image": {"file": filename, "caption": caption}})
+    if dry_run() or simulated:
+        return _post_message({"to": to, "type": "image", "image": {"file": filename, "caption": caption}}, True)
     try:
         upload = requests.post(
             f"{GRAPH}/{WHATSAPP_PHONE_NUMBER_ID}/media",

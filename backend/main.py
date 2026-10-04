@@ -2,6 +2,7 @@
 
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -307,10 +308,13 @@ def whatsapp_send(req: SendRequest):
             )
 
         to = enquiry["buyer_phone"]
+        # Buyers from the demo panel or the buyer chat page are never sent to Meta
+        simulated = (enquiry["wa_message_id"] or "").startswith(("wamid.DEMO", "wamid.CHAT"))
         try:
-            sent_ids = [whatsapp.send_text(to, text)]
+            sent_ids = [whatsapp.send_text(to, text, simulated)]
         except whatsapp.WhatsAppError as e:
             raise HTTPException(502, str(e))  # nothing was sent; staff can try again
+        db.add_chat(to, "out", text=text)
 
         # The text is out: from here on, record it even if a photo fails
         failed = []
@@ -320,7 +324,8 @@ def whatsapp_send(req: SendRequest):
             try:
                 jpeg = to_jpeg_bytes(load_image_file(CATALOGUE_DIR / design["image_file"]))
                 caption = f"{number}. {design['name']} ({design_id})"
-                sent_ids.append(whatsapp.send_image(to, jpeg, f"{design_id}.jpg", caption))
+                sent_ids.append(whatsapp.send_image(to, jpeg, f"{design_id}.jpg", caption, simulated))
+                db.add_chat(to, "out", image_ref=f"catalogue:{design['image_file']}", caption=caption)
             except (whatsapp.WhatsAppError, BadImage, OSError) as e:
                 failed.append({"design_id": design_id, "error": str(e)})
 
@@ -332,7 +337,7 @@ def whatsapp_send(req: SendRequest):
         "audit_id": audit_id,
         "messages_sent": len(sent_ids),
         "failed_photos": failed,
-        "dry_run": whatsapp.dry_run(),
+        "dry_run": whatsapp.dry_run() or simulated,
     }
 
 
@@ -393,6 +398,90 @@ def demo_simulate(req: SimulateRequest):
     if not demo.simulate(req.scenario_id):
         raise HTTPException(404, "Unknown scenario")
     return {"ok": True}
+
+
+# ---------- Buyer chat simulator (demo mode) ----------
+# A WhatsApp-style page at /#buyer: anyone can play a buyer from their own
+# phone. Messages go through backend/inbox.py exactly like real WhatsApp, and
+# the shop's replies (Send on WhatsApp) come back into the same chat.
+
+CHAT_PREFIX = "9197"  # phone numbers of simulated chat buyers
+
+
+def _demo_chat_only(phone=None):
+    if not DEMO_MODE:
+        raise HTTPException(404, "Demo mode is off")
+    if phone is not None and not (phone.isdigit() and phone.startswith(CHAT_PREFIX) and 10 <= len(phone) <= 15):
+        raise HTTPException(400, "Not a demo chat number")
+
+
+@app.post("/api/demo/chat/send")
+def demo_chat_send(
+    phone: str = Form(...), name: str = Form(""), text: str = Form(""), image: UploadFile | None = File(None)
+):
+    _demo_chat_only(phone)
+    text = text.strip()[: CONFIG["uploads"]["max_text_chars"]]
+    data = None
+    if image is not None and image.filename:
+        data = image.file.read(MAX_BYTES + 1)
+        try:
+            load_image(data)  # check now so the buyer sees the error
+        except BadImage as e:
+            raise HTTPException(400, str(e))
+    if not data and not text:
+        raise HTTPException(400, "Type a message or add a photo.")
+    message = {
+        "id": f"wamid.CHAT{uuid.uuid4().hex[:16]}",
+        "phone": phone,
+        "name": (name.strip() or "Buyer")[:60],
+        "timestamp": int(time.time()),
+        "type": "image" if data else "text",
+        "original_type": "image" if data else "text",
+        "text": text,
+        "media_id": None,
+        "image_bytes": data,
+    }
+    threading.Thread(target=inbox.handle_messages, args=([message],), daemon=True).start()
+    return {"ok": True}
+
+
+@app.get("/api/demo/chat/{phone}")
+def demo_chat_messages(phone: str, after: int = 0):
+    _demo_chat_only(phone)
+    return [
+        {
+            "id": m["id"],
+            "created_at": m["created_at"],
+            "direction": m["direction"],
+            "text": m["text"],
+            "caption": m["caption"],
+            "image_url": f"/api/demo/chat/image/{m['id']}" if m["image_ref"] else None,
+        }
+        for m in db.list_chat(phone, after)
+    ]
+
+
+@app.get("/api/demo/chat/image/{message_id}")
+def demo_chat_image(message_id: int):
+    _demo_chat_only()
+    m = db.get_chat_message(message_id)
+    if not m or not m["image_ref"] or not m["phone"].startswith(CHAT_PREFIX):
+        raise HTTPException(404, "Not found")
+    kind, name = m["image_ref"].split(":", 1)
+    folder = UPLOAD_DIR if kind == "upload" else CATALOGUE_DIR
+    path = (folder / name).resolve()
+    if path.parent != folder.resolve() or not path.is_file():
+        raise HTTPException(404, "Not found")
+    return FileResponse(path)
+
+
+@app.get("/api/inbox/{enquiry_id}/chat")
+def inbox_chat(enquiry_id: int):
+    """The whole conversation with this enquiry's buyer (for the Inbox)."""
+    enquiry = db.get_enquiry(enquiry_id)
+    if enquiry is None or enquiry["source"] != "whatsapp":
+        raise HTTPException(404, "Not found")
+    return db.list_chat(enquiry["buyer_phone"])
 
 
 @app.get("/api/uploads/{image_file}")

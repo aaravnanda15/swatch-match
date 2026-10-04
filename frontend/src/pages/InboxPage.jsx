@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "qrcode";
 import {
   dismissInboxItem,
   getDemoScenarios,
+  getInboxChat,
+  imageUrl,
   getInbox,
   getInboxItem,
   samplePhotoUrl,
@@ -103,6 +106,7 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
             WhatsApp enquiries, already matched. Open one, check it, then reply.
           </p>
         </div>
+        {demoMode && <BuyerQR />}
         {demoMode && <DemoPanel onSimulate={simulate} pending={pending} />}
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-5 py-10 text-center">
@@ -190,6 +194,7 @@ function InboxRow({ item, selected, onOpen }) {
 
 function InboxDetail({ id, signature, onBack, onChanged }) {
   const [item, setItem] = useState(null);
+  const [chatTick, setChatTick] = useState(0); // bump to reload the conversation
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState(null);
 
@@ -264,19 +269,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
         </p>
       )}
 
-      {/* What the buyer sent, as a chat bubble */}
-      <div className="max-w-[88%] rounded-2xl rounded-tl-md border border-line bg-card p-2 shadow-sm">
-        {item.image_file && (
-          <button type="button" onClick={() => setViewing({ image_file: item.image_file, name: "Buyer's photo", upload: true })}>
-            <img src={uploadUrl(item.image_file)} alt="Buyer's photo" className="max-h-56 rounded-xl object-cover" />
-          </button>
-        )}
-        {item.text && (
-          <p className={`px-1.5 py-1 text-[15px] ${item.mode === "unsupported" ? "text-faint italic" : "text-ink"}`}>
-            {item.text}
-          </p>
-        )}
-      </div>
+      <Conversation item={item} refreshKey={`${signature}|${chatTick}`} onOpenImage={setViewing} />
 
       {item.answer ? (
         <Shortlist
@@ -291,6 +284,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
             onSent: () => {
               load();
               onChanged();
+              setTimeout(() => setChatTick((n) => n + 1), 600);
             },
           }}
         />
@@ -351,6 +345,95 @@ function DemoPanel({ onSimulate, pending }) {
             </button>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+// Everything said with this buyer so far, both ways. Falls back to the
+// enquiry's own message for enquiries recorded before conversations were kept.
+function Conversation({ item, refreshKey, onOpenImage }) {
+  const [chat, setChat] = useState(null);
+  useEffect(() => {
+    getInboxChat(item.id)
+      .then(setChat)
+      .catch(() => setChat([]));
+  }, [item.id, refreshKey]);
+
+  const messages =
+    chat && chat.length > 0
+      ? chat.slice(-12)
+      : [{ id: "only", direction: "in", text: item.text, image_ref: item.image_file ? `upload:${item.image_file}` : null }];
+
+  const src = (ref) => {
+    const [kind, name] = ref.split(":");
+    return kind === "upload" ? uploadUrl(name) : imageUrl(name);
+  };
+
+  return (
+    <div className="space-y-1.5 rounded-2xl bg-[#efe7dc]/70 p-2.5">
+      {messages.map((m) => {
+        const fromBuyer = m.direction === "in";
+        return (
+          <div
+            key={m.id}
+            className={`w-fit max-w-[85%] rounded-xl px-2 py-1.5 text-sm shadow-sm ${
+              fromBuyer ? "rounded-tl-sm bg-card" : "ml-auto rounded-tr-sm bg-[#d6f2d0]"
+            }`}
+          >
+            {m.image_ref && (
+              <button
+                type="button"
+                onClick={() =>
+                  onOpenImage({
+                    image_file: m.image_ref.split(":")[1],
+                    name: fromBuyer ? "Buyer's photo" : m.caption,
+                    upload: m.image_ref.startsWith("upload:"),
+                  })
+                }
+              >
+                <img src={src(m.image_ref)} alt="" className="max-h-44 rounded-lg object-cover" />
+              </button>
+            )}
+            {(m.text || m.caption) && (
+              <p className={`px-1 whitespace-pre-line ${item.mode === "unsupported" && fromBuyer ? "text-faint italic" : "text-ink"}`}>
+                {m.text || m.caption}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// Demo: anyone can be the buyer from their own phone
+function BuyerQR() {
+  const link = `${window.location.origin}/#buyer`;
+  const [qr, setQr] = useState("");
+  useEffect(() => {
+    QRCode.toDataURL(link, { margin: 1, width: 240, color: { dark: "#231d18", light: "#fffdf9" } })
+      .then(setQr)
+      .catch(() => setQr(""));
+  }, [link]);
+
+  return (
+    <section className="flex items-center gap-4 rounded-2xl border border-line bg-card p-3">
+      {qr && <img src={qr} alt="QR code for the buyer chat" className="h-24 w-24 shrink-0 rounded-lg" />}
+      <div className="min-w-0">
+        <p className="text-sm font-semibold text-ink">Be the buyer</p>
+        <p className="mt-0.5 text-xs text-muted">
+          Scan with any phone to message this shop like on WhatsApp. Replies you send here appear on that phone.
+        </p>
+        <a
+          href="#buyer"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-indigo hover:underline"
+        >
+          Open buyer chat in a new tab
+          <Icon name="chevron" className="h-3.5 w-3.5" />
+        </a>
       </div>
     </section>
   );
