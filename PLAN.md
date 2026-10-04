@@ -125,3 +125,4 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Step 5 done: one clarifying question (Gemini or 4-language template), Hinglish detection.
 - Step 6 done: tick designs, template reply in en/hi/hinglish/gu (numbers from DB), edit, Approve & copy -> audit_log. Sample designs renamed in stock.csv.
 - Step 7 done: trace panel (timeline of tool calls, timings, score mix).
+- Step 8 done: Log tab (cards on phones, table on desktop, search, copy again, buyer photo via /api/uploads).
