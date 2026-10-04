@@ -110,3 +110,12 @@ export function getInboxItem(id) {
 export function dismissInboxItem(id) {
   return request(`/api/inbox/${id}/dismiss`, { method: "POST" });
 }
+
+// Sends the approved reply and the picked design photos to the buyer on WhatsApp
+export function sendWhatsApp(enquiryId, picked, text, language) {
+  return request("/api/whatsapp/send", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language }),
+  });
+}

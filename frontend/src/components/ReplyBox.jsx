@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { approveReply, draftReply } from "../api.js";
 import { copyText } from "../clipboard.js";
 import Icon from "./Icon.jsx";
+import WhatsAppSend from "./WhatsAppSend.jsx";
 
 const LANGUAGES = [
   { id: "en", label: "English" },
@@ -12,8 +13,10 @@ const LANGUAGES = [
 
 // Draft reply for the designs staff ticked. The text comes from templates on
 // the server (stock and rate straight from stock.csv); staff can edit it,
-// then Approve copies it and saves it to the log. Nothing is sent by itself.
-export default function ReplyBox({ enquiryId, picked, defaultLanguage }) {
+// then Approve copies it and saves it to the log. For WhatsApp enquiries
+// (whatsapp prop) staff can instead tap Send on WhatsApp. Nothing is ever
+// sent without that tap.
+export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp }) {
   const [language, setLanguage] = useState(
     LANGUAGES.some((l) => l.id === defaultLanguage) ? defaultLanguage : "en"
   );
@@ -132,16 +135,32 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage }) {
 
       {error && <p className="mt-2 text-sm text-madder">{error}</p>}
 
+      {picked.length > 0 && whatsapp && (
+        <div className="mt-3">
+          <WhatsAppSend
+            whatsapp={whatsapp}
+            picked={picked}
+            text={text}
+            language={language}
+            disabled={loading || !text.trim() || stale}
+          />
+        </div>
+      )}
+
       {picked.length > 0 && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={approve}
             disabled={loading || !text.trim()}
-            className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-leaf py-3 text-sm font-semibold text-white shadow-sm hover:bg-leaf/90 disabled:opacity-50"
+            className={
+              whatsapp
+                ? "flex flex-1 items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-sm font-medium text-muted hover:text-ink disabled:opacity-50"
+                : "flex flex-1 items-center justify-center gap-2 rounded-xl bg-leaf py-3 text-sm font-semibold text-white shadow-sm hover:bg-leaf/90 disabled:opacity-50"
+            }
           >
             <Icon name={approved ? "check" : "copy"} className="h-4 w-4" strokeWidth={2.2} />
-            {approved ? "Approved" : "Approve & copy"}
+            {approved ? "Approved" : whatsapp ? "Copy instead (reply from phone)" : "Approve & copy"}
           </button>
           {edited && !stale && (
             <button
@@ -163,7 +182,11 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage }) {
             : "Saved to the log. Select the text above and copy it."}
         </p>
       )}
-      <p className="mt-2 text-[11px] text-faint">Swatch Match never sends messages. You stay in control.</p>
+      <p className="mt-2 text-[11px] text-faint">
+        {whatsapp
+          ? "Nothing goes to the buyer until you tap Send. You stay in control."
+          : "Swatch Match never sends messages. You stay in control."}
+      </p>
     </section>
   );
 }

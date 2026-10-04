@@ -220,7 +220,20 @@ function InboxDetail({ id, onBack, onChanged }) {
       </div>
 
       {item.answer ? (
-        <Shortlist result={item.answer} onOpenImage={setViewing} />
+        <Shortlist
+          result={item.answer}
+          onOpenImage={setViewing}
+          whatsapp={{
+            enquiryId: item.id,
+            status: item.status,
+            hoursLeft: item.hours_left,
+            buyerName: item.buyer_name,
+            onSent: () => {
+              load();
+              onChanged();
+            },
+          }}
+        />
       ) : (
         <p className="rounded-xl border border-dashed border-line px-3 py-5 text-center text-sm text-muted">
           Nothing to match. Reply from your phone, or Dismiss.

@@ -2,9 +2,10 @@ import { useState } from "react";
 import { approveReply } from "../api.js";
 import { copyText } from "../clipboard.js";
 import Icon from "./Icon.jsx";
+import WhatsAppSend from "./WhatsAppSend.jsx";
 
 // Shown when the enquiry is too vague: one question to send back to the buyer.
-export default function ClarifyCard({ question, enquiryId, language }) {
+export default function ClarifyCard({ question, enquiryId, language, whatsapp }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
 
@@ -41,6 +42,11 @@ export default function ClarifyCard({ question, enquiryId, language }) {
           {done ? "Copied & logged" : "Approve & copy"}
         </button>
       </div>
+      {whatsapp && (
+        <div className="mt-2.5">
+          <WhatsAppSend whatsapp={whatsapp} picked={[]} text={question} language={language} />
+        </div>
+      )}
       {error && <p className="mt-2 text-sm text-madder">{error}</p>}
     </div>
   );

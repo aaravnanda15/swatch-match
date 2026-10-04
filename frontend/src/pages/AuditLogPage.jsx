@@ -6,6 +6,15 @@ import Icon from "../components/Icon.jsx";
 
 const LANGUAGE_NAMES = { en: "English", hi: "हिंदी", hinglish: "Hinglish", gu: "ગુજરાતી" };
 
+// How the reply reached the buyer
+function Via({ entry }) {
+  return entry.sent_via === "whatsapp" ? (
+    <span className="rounded-full bg-leaf-soft px-2 py-0.5 text-[10px] font-semibold text-leaf">Sent on WhatsApp</span>
+  ) : (
+    <span className="rounded-full bg-line/60 px-2 py-0.5 text-[10px] font-semibold text-muted">Copied</span>
+  );
+}
+
 // Every reply staff approved, newest first. Reloads each time the tab opens.
 export default function AuditLogPage({ active }) {
   const [entries, setEntries] = useState(null);
@@ -92,6 +101,9 @@ export default function AuditLogPage({ active }) {
                       <p className="mt-1 text-xs text-faint">
                         #{e.id} · {LANGUAGE_NAMES[e.language] || e.language}
                       </p>
+                      <p className="mt-1.5">
+                        <Via entry={e} />
+                      </p>
                     </td>
                     <td className="max-w-56 px-3 py-3">
                       <Enquiry entry={e} />
@@ -118,8 +130,8 @@ function EntryCard({ entry, designs }) {
     <article className="space-y-3 rounded-2xl border border-line bg-card p-3">
       <div className="flex items-center justify-between text-xs">
         <span className="font-semibold text-ink">{shortDateTime(entry.created_at)}</span>
-        <span className="text-faint">
-          #{entry.id} · {LANGUAGE_NAMES[entry.language] || entry.language}
+        <span className="flex items-center gap-2 text-faint">
+          <Via entry={entry} />#{entry.id} · {LANGUAGE_NAMES[entry.language] || entry.language}
         </span>
       </div>
       <Enquiry entry={entry} />

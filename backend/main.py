@@ -12,7 +12,7 @@ from pydantic import BaseModel
 from backend import auth, db, embeddings, enquiries, inbox, llm, whatsapp
 from backend.agent import templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
-from backend.images import MAX_BYTES, BadImage, load_image
+from backend.images import MAX_BYTES, BadImage, load_image, load_image_file, to_jpeg_bytes
 from backend.tagging import clean_tags
 
 
@@ -172,6 +172,8 @@ def approve(req: ApproveRequest):
         raise HTTPException(400, "The reply is too long (over 4000 characters).")
     enquiry = _enquiry_and_picks(req.enquiry_id, req.picked)
     audit_id = db.add_audit(enquiry, req.picked, text, req.language)
+    if enquiry["source"] == "whatsapp":
+        db.set_status(enquiry["id"], "sent")  # staff will paste it into WhatsApp themselves
     return {"audit_id": audit_id}
 
 
@@ -262,6 +264,68 @@ def inbox_dismiss(enquiry_id: int):
         raise HTTPException(400, "Already replied.")
     db.set_status(enquiry_id, "dismissed")
     return {"ok": True}
+
+
+class SendRequest(BaseModel):
+    enquiry_id: int
+    picked: list[str] = []
+    text: str
+    language: str = "en"
+
+
+_send_lock = threading.Lock()  # two quick taps must not send twice
+
+
+@app.post("/api/whatsapp/send")
+def whatsapp_send(req: SendRequest):
+    """Staff approved the reply: send the text, then a photo of each picked design."""
+    if not whatsapp.configured():
+        raise HTTPException(404, "WhatsApp is not set up")
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(400, "The reply is empty.")
+    if len(text) > 4000:
+        raise HTTPException(400, "The reply is too long for WhatsApp (over 4000 characters).")
+
+    with _send_lock:
+        enquiry = _enquiry_and_picks(req.enquiry_id, req.picked)
+        if enquiry["source"] != "whatsapp":
+            raise HTTPException(400, "This enquiry did not come from WhatsApp. Use Approve & copy.")
+        if enquiry["status"] == "sent":
+            raise HTTPException(409, "A reply was already sent for this enquiry.")
+        if _hours_left(enquiry["buyer_phone"]) <= 0:
+            raise HTTPException(
+                400, "WhatsApp's 24-hour reply window has closed. Reply from your phone instead."
+            )
+
+        to = enquiry["buyer_phone"]
+        try:
+            sent_ids = [whatsapp.send_text(to, text)]
+        except whatsapp.WhatsAppError as e:
+            raise HTTPException(502, str(e))  # nothing was sent; staff can try again
+
+        # The text is out: from here on, record it even if a photo fails
+        failed = []
+        max_photos = CONFIG["whatsapp"]["max_photos"]
+        for number, design_id in enumerate(req.picked[:max_photos], start=1):
+            design = db.get_design(design_id)
+            try:
+                jpeg = to_jpeg_bytes(load_image_file(CATALOGUE_DIR / design["image_file"]))
+                caption = f"{number}. {design['name']} ({design_id})"
+                sent_ids.append(whatsapp.send_image(to, jpeg, f"{design_id}.jpg", caption))
+            except (whatsapp.WhatsAppError, BadImage, OSError) as e:
+                failed.append({"design_id": design_id, "error": str(e)})
+
+        db.set_status(enquiry["id"], "sent")
+        audit_id = db.add_audit(
+            enquiry, req.picked, text, req.language, sent_via="whatsapp", wa_sent_ids=sent_ids
+        )
+    return {
+        "audit_id": audit_id,
+        "messages_sent": len(sent_ids),
+        "failed_photos": failed,
+        "dry_run": whatsapp.dry_run(),
+    }
 
 
 @app.get("/api/uploads/{image_file}")

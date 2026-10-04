@@ -26,7 +26,8 @@ function defaultPicks(result) {
   return good.slice(0, 3).map((r) => r.design_id);
 }
 
-export default function Shortlist({ result, onOpenImage }) {
+// whatsapp (optional): { enquiryId, status, hoursLeft, buyerName, onSent } for Inbox enquiries
+export default function Shortlist({ result, onOpenImage, whatsapp }) {
   const [picked, setPicked] = useState(() => defaultPicks(result));
 
   function togglePick(designId) {
@@ -66,6 +67,7 @@ export default function Shortlist({ result, onOpenImage }) {
           question={result.clarifying_question}
           enquiryId={result.enquiry_id}
           language={result.query.language}
+          whatsapp={whatsapp}
         />
       )}
 
@@ -109,7 +111,12 @@ export default function Shortlist({ result, onOpenImage }) {
       )}
 
       {result.results.length > 0 && !result.clarifying_question && (
-        <ReplyBox enquiryId={result.enquiry_id} picked={pickedInOrder} defaultLanguage={result.query.language} />
+        <ReplyBox
+          enquiryId={result.enquiry_id}
+          picked={pickedInOrder}
+          defaultLanguage={result.query.language}
+          whatsapp={whatsapp}
+        />
       )}
 
       <TracePanel trace={result.trace} weights={result.weights} />
