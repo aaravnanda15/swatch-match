@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { imageUrl } from "../api.js";
+import { imageUrl, uploadUrl } from "../api.js";
 import Icon from "./Icon.jsx";
 
 // Full-screen photo. Closes on tap outside, the X button or Escape.
@@ -29,13 +29,14 @@ export default function ImageViewer({ design, onClose }) {
         <Icon name="x" />
       </button>
       <img
-        src={imageUrl(design.image_file)}
+        src={design.upload ? uploadUrl(design.image_file) : imageUrl(design.image_file)}
         alt={design.name}
         onClick={(e) => e.stopPropagation()}
         className="max-h-[78vh] max-w-full rounded-xl object-contain shadow-2xl"
       />
       <p className="mt-3 text-center text-sm text-white/90">
-        <span className="font-semibold">{design.design_id}</span> · {design.name}
+        {design.design_id && <span className="font-semibold">{design.design_id} · </span>}
+        {design.name}
       </p>
     </div>
   );

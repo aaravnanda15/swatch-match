@@ -98,3 +98,15 @@ export function login(passcode) {
 export function logout() {
   return request("/api/logout", { method: "POST" });
 }
+
+export function getInbox() {
+  return request("/api/inbox");
+}
+
+export function getInboxItem(id) {
+  return request(`/api/inbox/${id}`);
+}
+
+export function dismissInboxItem(id) {
+  return request(`/api/inbox/${id}/dismiss`, { method: "POST" });
+}

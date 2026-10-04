@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getHealth, logout } from "./api.js";
 import Icon, { Logo } from "./components/Icon.jsx";
 import LoginScreen from "./components/LoginScreen.jsx";
 import EnquiryPage from "./pages/EnquiryPage.jsx";
 import CataloguePage from "./pages/CataloguePage.jsx";
 import AuditLogPage from "./pages/AuditLogPage.jsx";
+import InboxPage from "./pages/InboxPage.jsx";
 
-const TABS = [
+const ALL_TABS = [
+  { id: "inbox", label: "Inbox", icon: "inbox", whatsappOnly: true },
   { id: "enquiry", label: "Enquiry", icon: "enquiry" },
   { id: "catalogue", label: "Catalogue", icon: "catalogue" },
   { id: "log", label: "Log", icon: "log" },
@@ -16,9 +18,21 @@ export default function App() {
   const [tab, setTab] = useState("enquiry");
   const [health, setHealth] = useState(null);
   const [needsLogin, setNeedsLogin] = useState(false);
+  const [newCount, setNewCount] = useState(0); // WhatsApp enquiries waiting
+  const onNewCount = useCallback((n) => setNewCount(n), []);
+
+  // "(2) Swatch Match" in the browser tab while enquiries are waiting
+  useEffect(() => {
+    document.title = newCount > 0 ? `(${newCount}) Swatch Match` : "Swatch Match";
+  }, [newCount]);
 
   useEffect(() => {
-    getHealth().then(setHealth).catch(() => setHealth({ status: "down" }));
+    getHealth()
+      .then((h) => {
+        setHealth(h);
+        if (h.whatsapp_configured) setTab("inbox"); // WhatsApp shops start in the Inbox
+      })
+      .catch(() => setHealth({ status: "down" }));
     // Any API call answered with 401 brings up the passcode screen
     const onAuth = () => setNeedsLogin(true);
     window.addEventListener("auth-required", onAuth);
@@ -26,6 +40,9 @@ export default function App() {
   }, []);
 
   if (needsLogin) return <LoginScreen />;
+
+  const whatsapp = Boolean(health?.whatsapp_configured);
+  const TABS = ALL_TABS.filter((t) => whatsapp || !t.whatsappOnly);
 
   return (
     <div className="min-h-screen">
@@ -61,6 +78,7 @@ export default function App() {
             >
               <Icon name={t.icon} className="h-4 w-4" />
               {t.label}
+              {t.id === "inbox" && newCount > 0 && <Badge n={newCount} />}
             </button>
           ))}
         </nav>
@@ -68,6 +86,11 @@ export default function App() {
 
       {/* Pages stay mounted so an enquiry in progress survives a tab switch */}
       <main className="mx-auto max-w-5xl px-4 pt-5 pb-28 md:pb-12">
+        {whatsapp && (
+          <div hidden={tab !== "inbox"}>
+            <InboxPage active={tab === "inbox"} onNewCount={onNewCount} />
+          </div>
+        )}
         <div hidden={tab !== "enquiry"}>
           <EnquiryPage />
         </div>
@@ -95,11 +118,16 @@ export default function App() {
               }`}
             >
               <span
-                className={`flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
+                className={`relative flex h-7 w-12 items-center justify-center rounded-full transition-colors ${
                   tab === t.id ? "bg-madder-soft" : ""
                 }`}
               >
                 <Icon name={t.icon} className="h-5 w-5" />
+                {t.id === "inbox" && newCount > 0 && (
+                  <span className="absolute -top-1 right-1">
+                    <Badge n={newCount} />
+                  </span>
+                )}
               </span>
               {t.label}
             </button>
@@ -107,6 +135,14 @@ export default function App() {
         </div>
       </nav>
     </div>
+  );
+}
+
+function Badge({ n }) {
+  return (
+    <span className="ml-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-madder px-1 text-[10px] leading-none font-bold text-white">
+      {n > 99 ? "99+" : n}
+    </span>
   );
 }
 

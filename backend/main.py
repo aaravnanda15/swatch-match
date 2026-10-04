@@ -1,6 +1,7 @@
 """FastAPI app. All API routes live under /api; everything else serves the built React app."""
 
 import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -205,6 +206,61 @@ async def whatsapp_receive(request: Request, background: BackgroundTasks):
     messages = whatsapp.parse_webhook(payload)
     if messages:
         background.add_task(inbox.handle_messages, messages)
+    return {"ok": True}
+
+
+# ---------- Inbox (WhatsApp enquiries waiting for staff) ----------
+
+WINDOW_HOURS = CONFIG["whatsapp"]["reply_window_hours"]
+
+
+def _hours_left(phone):
+    """Hours left to reply freely on WhatsApp (0 = window closed)."""
+    last = db.last_message_time(phone)
+    if not last:
+        return 0
+    return max(0.0, round(WINDOW_HOURS - (time.time() - last) / 3600, 1))
+
+
+@app.get("/api/inbox")
+def inbox_list():
+    items = db.list_inbox()
+    for item in items:
+        item["buyer_phone_masked"] = inbox.mask(item.pop("buyer_phone"))
+    return {"items": items, "new": sum(1 for i in items if i["status"] == "new")}
+
+
+@app.get("/api/inbox/{enquiry_id}")
+def inbox_item(enquiry_id: int):
+    enquiry = db.get_enquiry(enquiry_id)
+    if enquiry is None or enquiry["source"] != "whatsapp":
+        raise HTTPException(404, "Not found")
+    answer = enquiry["answer"]
+    if answer is not None:
+        answer["enquiry_id"] = enquiry_id
+    return {
+        "id": enquiry_id,
+        "created_at": enquiry["created_at"],
+        "text": enquiry["text"],
+        "image_file": enquiry["image_file"],
+        "mode": enquiry["mode"],
+        "status": enquiry["status"],
+        "sent_at": enquiry["sent_at"],
+        "buyer_name": enquiry["buyer_name"],
+        "buyer_phone": enquiry["buyer_phone"],
+        "hours_left": _hours_left(enquiry["buyer_phone"]),
+        "answer": answer,
+    }
+
+
+@app.post("/api/inbox/{enquiry_id}/dismiss")
+def inbox_dismiss(enquiry_id: int):
+    enquiry = db.get_enquiry(enquiry_id)
+    if enquiry is None or enquiry["source"] != "whatsapp":
+        raise HTTPException(404, "Not found")
+    if enquiry["status"] == "sent":
+        raise HTTPException(400, "Already replied.")
+    db.set_status(enquiry_id, "dismissed")
     return {"ok": True}
 
 
