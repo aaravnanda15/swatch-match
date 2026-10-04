@@ -7,7 +7,8 @@ Two providers with the same methods:
 
 Every method returns None when the LLM is unavailable or fails. Callers must
 check for None and fall back; nothing here ever raises to the caller.
-More methods (clarify, reply) are added in later steps.
+Replies to buyers are built from templates (agent/templates.py), not here,
+so stock numbers and rates never come from the LLM.
 """
 
 import json
@@ -43,6 +44,17 @@ Allowed values:
 {allowed}
 """
 
+CLARIFY_PROMPT = """A buyer sent this vague enquiry to a fabric and saree wholesaler on WhatsApp:
+<<<{text}>>>
+What we understood so far: {known}
+
+Write ONE short, polite question back to the buyer asking for the most useful
+missing detail (a photo of the design, the colour, the type such as saree or
+dupatta, or the budget per piece). Write it in the same language and script
+the buyer used ({language}). No prices, no stock numbers, no promises.
+Answer with ONLY a JSON object: {{"question": "..."}}
+"""
+
 
 def _allowed_values_text():
     return "\n".join(f'"{attr}": one of {values}' for attr, values in ATTRIBUTES.items())
@@ -70,6 +82,9 @@ class NullProvider:
         return None
 
     def parse_text(self, text):
+        return None
+
+    def clarify(self, text, known, language):
         return None
 
 
@@ -129,6 +144,10 @@ class GeminiProvider:
 
     def parse_text(self, text):
         prompt = PARSE_PROMPT.format(text=text, allowed=_allowed_values_text())
+        return self._generate([prompt])
+
+    def clarify(self, text, known, language):
+        prompt = CLARIFY_PROMPT.format(text=text, known=known or "nothing", language=language)
         return self._generate([prompt])
 
 

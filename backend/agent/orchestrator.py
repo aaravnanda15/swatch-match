@@ -7,8 +7,9 @@ explainable order. It never loops and works the same with or without the LLM.
                     -> text_search -> narrow_to_lookalikes -> check_stock
                     ("this design but in blue": the photo finds the design,
                      the colour from the text re-ranks)
-    vague text      text with nothing recognisable: a best guess shortlist plus
-                    one clarifying question for the buyer
+    vague text      parse_text -> ask_clarifying_question -> text_search -> check_stock
+                    (nothing useful recognised: one question for the buyer, plus
+                     a best-guess shortlist staff can ignore)
 
 Every tool call is written to the trace so staff can see why they got
 these results.
@@ -67,6 +68,7 @@ def handle_enquiry(text, img):
     mode = decide_mode(img is not None, bool(text))
     designs = {d["design_id"]: d for d in db.list_designs()}
     fallback_reasons = []
+    clarifying_question = None
 
     image_scores, attr_scores, text_scores = {}, {}, {}
     photo = None  # tags + colour of the buyer's photo
@@ -100,6 +102,14 @@ def handle_enquiry(text, img):
 
         if img is None and is_vague(query):
             mode = "vague"
+            t = time.perf_counter()
+            clarify = tools.ask_clarifying_question(text, query)
+            if clarify["llm_failed"]:
+                fallback_reasons.append("The AI could not write the question, so a standard one was used.")
+            by = "Gemini" if clarify["source"] == "gemini" else "template"
+            trace.add("ask_clarifying_question", "Too little to match on: ask the buyer one question",
+                      text, f"{clarify['question']} (by {by})", t)
+            clarifying_question = clarify["question"]
 
         if query["attributes"]:
             t = time.perf_counter()
@@ -182,7 +192,8 @@ def handle_enquiry(text, img):
     no_match = not results or results[0]["label"] == "none"
     if no_match:
         for r in results:
-            r["label"], r["label_text"] = "none", "Nearest alternative"
+            r["label"] = "none"
+            r["label_text"] = "Best guess" if mode == "vague" else "Nearest alternative"
 
     return {
         "mode": mode,
@@ -192,6 +203,7 @@ def handle_enquiry(text, img):
         "photo_tags": photo["tags"] if photo else None,
         "weights": {k: round(v, 2) for k, v in weights.items()},
         "no_match": no_match,
+        "clarifying_question": clarifying_question,
         "over_budget_removed": len(over_budget),
         "results": results,
         "trace": trace.steps,

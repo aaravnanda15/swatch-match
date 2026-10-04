@@ -156,13 +156,25 @@ def _positions(text, word):
     return [m.start() for m in re.finditer(re.escape(word), text)]
 
 
+# Common Hindi words typed in English letters; two or more means Hinglish
+HINGLISH_WORDS = {
+    "chahiye", "chaiye", "hai", "hain", "ka", "ki", "ke", "mein", "me", "wala", "wali", "kya", "dikhao",
+    "bhejo", "kitne", "kitna", "accha", "acha", "kuch", "aur", "isme", "ismein", "bhi", "tak", "se",
+    "kam", "hoga", "milega", "batao", "dijiye", "bhai", "ji", "yeh", "ye", "woh", "koi", "jaisa",
+}
+
+
 def detect_language(text):
-    """'hi' for Devanagari, 'gu' for Gujarati script, otherwise 'en'
-    (Hinglish written in English letters counts as 'en' here)."""
+    """'hi' for Devanagari, 'gu' for Gujarati script, 'hinglish' for Hindi in
+    English letters, otherwise 'en'."""
     if re.search(r"[઀-૿]", text):
         return "gu"
     if re.search(r"[ऀ-ॿ]", text):
         return "hi"
+    words = re.findall(r"[a-z]+", text.lower())
+    hits = sum(1 for w in words if w in HINGLISH_WORDS)
+    if hits >= 2 or (hits == 1 and len(words) <= 3):
+        return "hinglish"
     return "en"
 
 

@@ -1,13 +1,13 @@
 """The agent's tools. Each one does a single job and returns plain data.
 The orchestrator decides which to call and logs every call to the trace.
 
-Clarifying question and draft reply tools are added in steps 5 and 6.
+The draft reply tool is added in step 6.
 """
 
 import numpy as np
 
 from backend import db, embeddings, llm, tagging
-from backend.agent import lexicon, scoring
+from backend.agent import lexicon, scoring, templates
 from backend.config import ATTRIBUTES, CATALOGUE_DIR
 from backend.images import colour_profile, load_image_file
 
@@ -85,6 +85,26 @@ def design_colour(image_file):
     if key not in _design_colours:
         _design_colours[key] = colour_profile(load_image_file(path))
     return _design_colours[key]
+
+
+def ask_clarifying_question(text, query):
+    """One question back to the buyer when the enquiry is too vague.
+    Gemini writes it in the buyer's language; a template is used otherwise.
+    Returns {"question", "source", "llm_failed"}."""
+    language = query.get("language", "en")
+    provider = llm.get_llm()
+    if provider.available:
+        known = ", ".join(query["attributes"].values())
+        answer = provider.clarify(text, known, language)
+        question = answer.get("question") if isinstance(answer, dict) else None
+        # Accept only a short single question with no numbers (no prices or stock)
+        if isinstance(question, str) and 5 < len(question) <= 300 and not any(ch.isdigit() for ch in question):
+            return {"question": question.strip(), "source": "gemini", "llm_failed": False}
+    return {
+        "question": templates.clarifying_question(language, query["attributes"]),
+        "source": "template",
+        "llm_failed": provider.available,
+    }
 
 
 def _positive_number(value):

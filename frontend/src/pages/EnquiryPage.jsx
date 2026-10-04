@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getSettings, sendEnquiry } from "../api.js";
 import { rupees } from "../format.js";
+import ClarifyCard from "../components/ClarifyCard.jsx";
 import FallbackBanner from "../components/FallbackBanner.jsx";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
@@ -35,6 +36,7 @@ export default function EnquiryPage() {
   const [viewing, setViewing] = useState(null); // design shown full screen
   const fileInput = useRef(null);
   const formRef = useRef(null);
+  const resultsRef = useRef(null);
 
   useEffect(() => {
     getSettings().then(setSettings).catch(() => {}); // defaults are fine if this fails
@@ -115,6 +117,10 @@ export default function EnquiryPage() {
     setSending(true);
     try {
       setResult(await sendEnquiry(photo, text));
+      // On phones the shortlist is below the form: bring it into view
+      if (window.innerWidth < 1024) {
+        setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -249,7 +255,7 @@ export default function EnquiryPage() {
       </form>
 
       {/* ---------- The shortlist ---------- */}
-      <section aria-live="polite" className="min-w-0">
+      <section ref={resultsRef} aria-live="polite" className="min-w-0 scroll-mt-20">
         {sending ? (
           <LoadingCards />
         ) : result ? (
@@ -291,7 +297,9 @@ function Shortlist({ result, onOpenImage }) {
 
       {result.fallback_mode && <FallbackBanner reason={result.fallback_reason} />}
 
-      {result.no_match && result.results.length > 0 && (
+      {result.clarifying_question && <ClarifyCard question={result.clarifying_question} />}
+
+      {result.no_match && !result.clarifying_question && result.results.length > 0 && (
         <div className="flex gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-sm">
           <Icon name="box" className="mt-px h-5 w-5 shrink-0 text-muted" />
           <p>
