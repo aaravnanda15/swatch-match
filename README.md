@@ -119,6 +119,33 @@ Set `DEMO_MODE=1` in `.env` (or in the host's settings):
   made-up buyers and dates, never appears in the Inbox or Log, and **Clear sample data** removes it.
 - **One-tap photos:** the Enquiry tab always offers one-tap sample buyer photos.
 
+## Live demo
+
+The live demo runs on the presenter's laptop and is shared through a free **Cloudflare quick tunnel**. There's no
+account, no server and no cost.
+
+```bash
+./run.sh                                             # 1. start the app on http://localhost:7860
+cloudflared tunnel --url http://localhost:7860       # 2. in a second terminal: get a public link
+```
+
+`cloudflared` prints a public address like `https://some-random-words.trycloudflare.com`. Anyone with that link
+can use the app on a phone or laptop. To install `cloudflared`, download `cloudflared-darwin-arm64.tgz` (Apple
+Silicon Mac) from <https://github.com/cloudflare/cloudflared/releases>, unpack it into `~/.local/bin` and run it from
+there. Other systems have their own files on the same page.
+
+Things to know:
+
+- **Laptop must stay on:** the link works only while the laptop is awake and both commands are running.
+- **New link each time:** every start gives a new random link, so share the new one.
+- **Use demo mode:** `DEMO_MODE=1` in `.env` gives judges simulated WhatsApp buyers and the sample Insights week.
+- **Set a passcode for a public link:** `STAFF_PASSCODE` in `.env`, then run `./run.sh` again. Otherwise anyone with
+  the link can edit stock, prices and tags (saved to `catalogue/stock.csv` on the laptop) and use your Gemini quota.
+- **For testing only:** quick tunnels are meant for demos. For daily use, host it as described in *Deploy to
+  Hugging Face Spaces* or on a small always-on server.
+- **WhatsApp webhooks:** the same link can serve as a temporary webhook URL for testing with Meta's test number
+  (`https://<link>/api/whatsapp/webhook`). Update it in Meta whenever the link changes.
+
 ## Accuracy
 
 ```bash
