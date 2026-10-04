@@ -17,10 +17,17 @@ import argparse
 import csv
 import random
 import re
+import socket
 import sys
+import time
 from pathlib import Path
 
 import requests
+import urllib3.util.connection
+
+# Use IPv4 only. On some networks IPv6 connections to Wikimedia get reset,
+# and requests does not fall back to IPv4 by itself. IPv4 always works.
+urllib3.util.connection.allowed_gai_family = lambda: socket.AF_INET
 
 ROOT = Path(__file__).resolve().parent.parent
 CATALOGUE = ROOT / "catalogue"
@@ -31,18 +38,27 @@ API = "https://commons.wikimedia.org/w/api.php"
 # Wikimedia asks every script to identify itself.
 HEADERS = {"User-Agent": "SwatchMatchHackathon/0.1 (sample data fetcher; educational use)"}
 
-# Categories we try, in order. Missing categories are simply skipped.
+# Categories we try. Picks are spread across them so the sample catalogue
+# has a mix of styles. Missing categories are simply skipped.
 CATEGORIES = [
-    "Sarees",
-    "Saris",
     "Bandhani",
-    "Patola",
-    "Banarasi sari",
-    "Kanchipuram sari",
-    "Ikat textiles",
-    "Leheriya",
-    "Block printed textiles of India",
+    "Bandhani saris",
+    "Kanchipuram saris",
+    "Ikat",
+    "Jamdani",
+    "Phulkari",
+    "Mysore silk",
+    "Saris",
 ]
+
+# Skip photos whose title suggests people, looms or shop scenes rather than
+# a single product. Not perfect, but removes most non-catalogue photos.
+SKIP_WORDS = (
+    "loom", "weav", "tool", "yarn", "thread", "woman", "women", "men", "girl",
+    "boy", "child", "bride", "ladies", "lady", "portrait", "maharani", "dog",
+    "beagle", "competition", "festival", "deepavali", "store", "shop", "market",
+    "village", "museum", "hammock", "dress", "alat tenun",
+)
 
 # Only licences that allow reuse with attribution.
 OK_LICENCES = ("cc0", "public domain", "cc by", "cc-by", "pd")
@@ -102,20 +118,29 @@ def name_from_title(title):
 
 def download(count):
     CATALOGUE.mkdir(exist_ok=True)
-    seen, chosen = set(), []
+    # 1. Read every category (with a pause, Wikimedia rate-limits fast scripts)
+    per_category = []
     for cat in CATEGORIES:
-        if len(chosen) >= count:
-            break
         try:
             items = fetch_category(cat, limit=50)
         except requests.RequestException as e:
             print(f"  ! could not read category {cat}: {e}")
             continue
+        items = [it for it in items if not any(w in it["title"].lower() for w in SKIP_WORDS)]
         print(f"  {cat}: {len(items)} usable images")
-        for item in items:
-            if item["title"] not in seen and len(chosen) < count:
-                seen.add(item["title"])
-                chosen.append(item)
+        per_category.append(items)
+        time.sleep(3)
+
+    # 2. Take one image from each category in turn, so styles are mixed
+    seen, chosen = set(), []
+    while len(chosen) < count and any(per_category):
+        for items in per_category:
+            while items and len(chosen) < count:
+                item = items.pop(0)
+                if item["title"] not in seen:
+                    seen.add(item["title"])
+                    chosen.append(item)
+                    break
 
     if not chosen:
         sys.exit("No images downloaded. Is commons.wikimedia.org reachable? "
@@ -125,6 +150,7 @@ def download(count):
     for i, item in enumerate(chosen, start=1):
         design_id = f"D{i:03d}"
         filename = f"{design_id}.jpg"
+        time.sleep(0.5)  # be gentle with upload.wikimedia.org too
         try:
             img = requests.get(item["thumb_url"], headers=HEADERS, timeout=60)
             img.raise_for_status()

@@ -8,16 +8,19 @@ cd "$(dirname "$0")"
 # 1. Python virtual environment + packages
 if [ ! -d .venv ]; then
   echo "==> Creating Python virtual environment (.venv)"
-  python3 -m venv .venv
+  # Prefer Python 3.11 (the python3 that ships with macOS is too old)
+  PY=$(command -v python3.11 || command -v python3)
+  "$PY" -m venv .venv
 fi
 source .venv/bin/activate
 if [ ! -f .venv/.installed ]; then
   echo "==> Installing Python packages (first run takes a few minutes)"
-  pip install --upgrade pip
+  python -m pip --version >/dev/null 2>&1 || python -m ensurepip
+  python -m pip install --upgrade pip
   # Small CPU-only PyTorch build. If that index is unreachable, the normal
   # one gets installed by sentence-transformers instead (bigger download).
-  pip install torch --index-url https://download.pytorch.org/whl/cpu || true
-  pip install -r requirements.txt
+  python -m pip install torch --index-url https://download.pytorch.org/whl/cpu || true
+  python -m pip install -r requirements.txt
   touch .venv/.installed
 fi
 

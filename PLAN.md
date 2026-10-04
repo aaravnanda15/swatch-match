@@ -104,3 +104,11 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Wikimedia download may be blocked by network; fallback is you dropping ~30 photos into /catalogue and running a helper that writes stock.csv.
 - First CLIP model download is ~600 MB; Dockerfile pre-downloads it at build time so the Space starts fast.
 - Gemini model name lives in config.yaml so it can be changed without code edits.
+
+## Notes from the first Mac attempt (work was lost, these lessons were kept)
+- Step 1 was written on a Mac that is no longer available and never pushed. Rebuild Step 1 from this plan.
+- No Homebrew needed: install Python 3.11 with `uv` and Node 22 from the official nodejs.org tarball into ~/.local, no sudo.
+- run.sh already prefers python3.11 (macOS python3 is 3.9) and bootstraps pip in a uv-created venv.
+- Install packages with `UV_HTTP_TIMEOUT=60` so a slow network cannot hang silently.
+- scripts/fetch_sample_catalogue.py already forces IPv4 (IPv6 to Wikimedia was being reset), spreads picks across fabric categories, skips people/loom/shop photos, and pauses to avoid HTTP 429. Still eyeball the photos after download and drop any that are not fabric.
+- **Commit and push after every working step.**
