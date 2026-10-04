@@ -4,12 +4,12 @@ import threading
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import db, embeddings, llm
+from backend import auth, db, embeddings, llm
 from backend.agent import orchestrator, templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, to_jpeg_bytes
@@ -24,12 +24,40 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Swatch Match", lifespan=lifespan)
+app.middleware("http")(auth.guard)  # staff passcode, only when STAFF_PASSCODE is set
 db.init_db()
 
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "llm_configured": llm.get_llm().available, "designs": len(db.list_designs())}
+    return {
+        "status": "ok",
+        "llm_configured": llm.get_llm().available,
+        "designs": len(db.list_designs()),
+        "login_required": auth.login_required(),
+    }
+
+
+class LoginRequest(BaseModel):
+    passcode: str
+
+
+@app.post("/api/login")
+def login(req: LoginRequest, request: Request):
+    if not auth.login_required():
+        return {"ok": True}
+    if not auth.passcode_ok(req.passcode.strip()):
+        raise HTTPException(401, "Wrong passcode.")
+    response = JSONResponse({"ok": True})
+    auth.set_cookie(response, request)
+    return response
+
+
+@app.post("/api/logout")
+def logout():
+    response = JSONResponse({"ok": True})
+    response.delete_cookie(auth.COOKIE)
+    return response
 
 
 @app.get("/api/attributes")

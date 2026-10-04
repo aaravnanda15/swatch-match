@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getHealth } from "./api.js";
+import { getHealth, logout } from "./api.js";
 import Icon, { Logo } from "./components/Icon.jsx";
+import LoginScreen from "./components/LoginScreen.jsx";
 import EnquiryPage from "./pages/EnquiryPage.jsx";
 import CataloguePage from "./pages/CataloguePage.jsx";
 import AuditLogPage from "./pages/AuditLogPage.jsx";
@@ -14,10 +15,17 @@ const TABS = [
 export default function App() {
   const [tab, setTab] = useState("enquiry");
   const [health, setHealth] = useState(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   useEffect(() => {
     getHealth().then(setHealth).catch(() => setHealth({ status: "down" }));
+    // Any API call answered with 401 brings up the passcode screen
+    const onAuth = () => setNeedsLogin(true);
+    window.addEventListener("auth-required", onAuth);
+    return () => window.removeEventListener("auth-required", onAuth);
   }, []);
+
+  if (needsLogin) return <LoginScreen />;
 
   return (
     <div className="min-h-screen">
@@ -29,6 +37,15 @@ export default function App() {
             <p className="truncate text-xs text-muted">Buyer enquiry → shortlist from your own stock</p>
           </div>
           <StatusPill health={health} />
+          {health?.login_required && (
+            <button
+              type="button"
+              onClick={() => logout().finally(() => window.location.reload())}
+              className="hidden shrink-0 text-xs font-medium text-muted hover:text-ink sm:block"
+            >
+              Log out
+            </button>
+          )}
         </div>
 
         {/* Tabs at the top on wider screens */}

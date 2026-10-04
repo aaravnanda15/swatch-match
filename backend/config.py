@@ -25,4 +25,5 @@ DATA_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+STAFF_PASSCODE = os.getenv("STAFF_PASSCODE", "").strip()  # empty = no login (local use)
 ATTRIBUTES = CONFIG["attributes"]

@@ -7,6 +7,11 @@ async function request(url, options) {
   } catch {
     throw new Error("Cannot reach the server. Is it running?");
   }
+  if (res.status === 401 && !url.startsWith("/api/login")) {
+    // Staff passcode needed: App.jsx listens for this and shows the passcode screen
+    window.dispatchEvent(new Event("auth-required"));
+    throw new Error("Please enter the staff passcode.");
+  }
   if (!res.ok) {
     // FastAPI puts error messages in "detail"
     let message = "Something went wrong. Please try again.";
@@ -80,4 +85,16 @@ export function getAudit() {
 
 export function uploadUrl(imageFile) {
   return `/api/uploads/${encodeURIComponent(imageFile)}`;
+}
+
+export function login(passcode) {
+  return request("/api/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ passcode }),
+  });
+}
+
+export function logout() {
+  return request("/api/logout", { method: "POST" });
 }
