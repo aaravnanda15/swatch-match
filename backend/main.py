@@ -1,17 +1,28 @@
 """FastAPI app. All API routes live under /api; everything else serves the built React app."""
 
+import threading
 import uuid
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from backend import db, llm
+from backend import db, embeddings, llm
+from backend.agent import orchestrator
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, to_jpeg_bytes
 from backend.tagging import clean_tags
 
-app = FastAPI(title="Swatch Match")
+
+@asynccontextmanager
+async def lifespan(app):
+    # Load CLIP in the background so the first enquiry is not slow
+    threading.Thread(target=embeddings.get_model, daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Swatch Match", lifespan=lifespan)
 db.init_db()
 
 
@@ -63,7 +74,7 @@ def enquiry(image: UploadFile | None = File(None), text: str = Form("")):
         raise HTTPException(400, f"The message is too long. Please keep it under {max_chars} characters.")
 
     # Browsers send an empty file part when no photo was picked; treat it as no photo.
-    image_file = None
+    image_file, img = None, None
     if image is not None and image.filename:
         data = image.file.read(MAX_BYTES + 1)  # read one byte too many so "too big" is detected
         try:
@@ -76,22 +87,9 @@ def enquiry(image: UploadFile | None = File(None), text: str = Form("")):
     if image_file is None and not text:
         raise HTTPException(400, "Add a photo or type what the buyer asked for.")
 
-    if image_file and text:
-        mode = "image_and_text"
-    elif image_file:
-        mode = "image_only"
-    else:
-        mode = "text_only"
-    enquiry_id = db.create_enquiry(text, image_file, mode)
-
-    # Matching (agent tools) is added in step 3; for now just confirm receipt.
-    return {
-        "enquiry_id": enquiry_id,
-        "mode": mode,
-        "fallback_mode": not llm.get_llm().available,
-        "results": [],
-        "trace": [],
-    }
+    answer = orchestrator.handle_enquiry(text, img)
+    answer["enquiry_id"] = db.create_enquiry(text, image_file, answer["mode"])
+    return answer
 
 
 @app.get("/api/images/{image_file}")

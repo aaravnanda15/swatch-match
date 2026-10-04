@@ -5,22 +5,26 @@ The model (~600 MB) downloads once into data/models and is loaded the first
 time it is needed, not at import time.
 """
 
+import threading
+
 import numpy as np
 
 from backend.config import CONFIG, DATA_DIR
 
 _model = None
+_lock = threading.Lock()  # the server warms the model in the background; load it only once
 
 
 def get_model():
     global _model
-    if _model is None:
-        # Imported here so the rest of the app starts fast and tests can run
-        # without the big library.
-        from sentence_transformers import SentenceTransformer
+    with _lock:
+        if _model is None:
+            # Imported here so the rest of the app starts fast and tests can run
+            # without the big library.
+            from sentence_transformers import SentenceTransformer
 
-        print(f"Loading CLIP model {CONFIG['embeddings']['model']} (first time downloads ~600 MB)...")
-        _model = SentenceTransformer(CONFIG["embeddings"]["model"], cache_folder=str(DATA_DIR / "models"))
+            print(f"Loading CLIP model {CONFIG['embeddings']['model']} (first time downloads ~600 MB)...")
+            _model = SentenceTransformer(CONFIG["embeddings"]["model"], cache_folder=str(DATA_DIR / "models"))
     return _model
 
 

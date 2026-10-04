@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getSettings, sendEnquiry } from "../api.js";
+import FallbackBanner from "../components/FallbackBanner.jsx";
+import ResultList from "../components/ResultList.jsx";
 
 // Used until /api/settings answers (same values as config.yaml)
 const DEFAULT_SETTINGS = {
@@ -15,7 +17,16 @@ const MODE_TEXT = {
   image_only: "Photo only",
   text_only: "Text only",
   image_and_text: "Photo + text",
+  vague: "Not clear yet",
 };
+
+// "red · bandhani · saree · up to ₹2000" from what the agent understood
+function describeQuery(query) {
+  const parts = Object.values(query.attributes);
+  if (query.max_rate) parts.push(`up to ₹${query.max_rate}`);
+  if (query.min_quantity) parts.push(`${query.min_quantity} pieces`);
+  return parts.join(" · ");
+}
 
 export default function EnquiryPage() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -188,9 +199,14 @@ export default function EnquiryPage() {
       </button>
 
       {result && (
-        <div className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">
-          Enquiry #{result.enquiry_id} received ({MODE_TEXT[result.mode]}). Matching is added in the next step.
-        </div>
+        <section className="space-y-2">
+          {result.fallback_mode && <FallbackBanner reason={result.fallback_reason} />}
+          <p className="text-xs text-stone-500">
+            Enquiry #{result.enquiry_id} · {MODE_TEXT[result.mode]}
+            {describeQuery(result.query) && <> · Understood: {describeQuery(result.query)}</>}
+          </p>
+          <ResultList results={result.results} />
+        </section>
       )}
     </form>
   );

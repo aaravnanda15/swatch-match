@@ -28,6 +28,17 @@ scoring:
     image_only:  {image: 1.0, attributes: 0.0, text: 0.0}
     text_only:   {image: 0.0, attributes: 0.6, text: 0.4}
     image_and_text: {image: 0.5, attributes: 0.4, text: 0.1}
+  # Raw CLIP similarities sit in narrow bands, so they are stretched to 0-1:
+  # at or below the first number -> 0, at or above the second -> 1.
+  # Measured on the sample catalogue: unrelated photos ~0.71, same design
+  # re-photographed ~0.85-0.92; text vs photo only ~0.20-0.35.
+  image_range: [0.65, 0.95]
+  text_range: [0.20, 0.34]
+  # Over-budget designs are dropped; this many candidates get a stock check.
+  candidates: 20
+  # Photo + text: only the designs that look most like the photo are
+  # considered, then the words re-rank them ("this design but in blue").
+  image_pool: 10
   # Labels shown on each result card. Tuned in step 4 with evaluate.py.
   thresholds:
     very_close: 0.80
