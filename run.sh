@@ -8,13 +8,24 @@ export PYTHONUNBUFFERED=1  # show server log lines straight away
 
 # 1. Python virtual environment + packages
 if [ ! -d .venv ]; then
-  echo "==> Creating Python virtual environment (.venv)"
-  # Prefer Python 3.11 (the python3 that ships with macOS is too old)
-  PY=$(command -v python3.11 || command -v python3)
+  # Python 3.10 or newer is needed (the python3 that ships with macOS is 3.9)
+  PY=""
+  for candidate in python3.11 python3.12 python3.13 python3.10 python3; do
+    if command -v "$candidate" >/dev/null && "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10))'; then
+      PY=$(command -v "$candidate"); break
+    fi
+  done
+  if [ -z "$PY" ]; then
+    echo "Swatch Match needs Python 3.10 or newer (3.11 recommended). See README, 'Run it on your computer'."
+    exit 1
+  fi
+  echo "==> Creating Python virtual environment (.venv) with $("$PY" --version)"
   "$PY" -m venv .venv
 fi
 source .venv/bin/activate
-if [ ! -f .venv/.installed ]; then
+# Install again whenever requirements.txt changes (its fingerprint is kept in .venv/.installed)
+REQS=$(python -c "import hashlib; print(hashlib.sha1(open('requirements.txt', 'rb').read()).hexdigest())")
+if [ "$(cat .venv/.installed 2>/dev/null)" != "$REQS" ]; then
   echo "==> Installing Python packages (first run takes a few minutes)"
   python -m pip --version >/dev/null 2>&1 || python -m ensurepip
   python -m pip install --upgrade pip
@@ -22,7 +33,7 @@ if [ ! -f .venv/.installed ]; then
   # one gets installed by sentence-transformers instead (bigger download).
   python -m pip install torch --index-url https://download.pytorch.org/whl/cpu || true
   python -m pip install -r requirements.txt
-  touch .venv/.installed
+  echo "$REQS" > .venv/.installed
 fi
 
 # 2. .env file (empty key = fallback mode, still works)
@@ -40,7 +51,8 @@ fi
 
 # 4. Frontend build
 echo "==> Building the UI"
-(cd frontend && { [ -d node_modules ] || npm install; } && npm run build)
+# npm install is quick when nothing changed, and picks up new packages after a git pull
+(cd frontend && npm install --no-audit --no-fund --loglevel=error && npm run build)
 
 # 5. Start the server
 echo "==> Open http://localhost:7860"

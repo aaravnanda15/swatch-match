@@ -5,6 +5,10 @@
 Each signal is between 0 and 1. Weights come from config.yaml and depend on
 what the buyer sent.
 
+Worked example, photo + "blue silk dupatta" (weights 0.5 / 0.4 / 0.1):
+    photo looks 0.90 alike, 2 of 3 asked details match (0.67), words 0.60
+    score = 0.5 * 0.90 + 0.4 * 0.67 + 0.1 * 0.60 = 0.78  ->  "Similar" (0.65 to 0.80)
+
 Labels and one-line reasons are COMPUTED from scores, tags and a simple colour
 check, never written by an LLM, so they cannot invent anything.
 """

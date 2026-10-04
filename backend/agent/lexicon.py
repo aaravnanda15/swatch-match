@@ -138,6 +138,10 @@ def _find_budget(text):
     return None
 
 
+def _sensible_budget(value):
+    return value if value is not None and value >= MIN_BUDGET else None
+
+
 def _find_quantity(text):
     m = QUANTITY.search(text)
     return int(m.group(1)) if m else None
@@ -156,9 +160,10 @@ def _positions(text, word):
     return [m.start() for m in re.finditer(re.escape(word), text)]
 
 
-# Common Hindi words typed in English letters; two or more means Hinglish
+# Common Hindi words typed in English letters. Words that are also English
+# ("me", "to") are left out, so "send me blue" stays English.
 HINGLISH_WORDS = {
-    "chahiye", "chaiye", "hai", "hain", "ka", "ki", "ke", "mein", "me", "wala", "wali", "kya", "dikhao",
+    "chahiye", "chaiye", "hai", "hain", "ka", "ki", "ke", "mein", "wala", "wali", "kya", "dikhao",
     "bhejo", "kitne", "kitna", "accha", "acha", "kuch", "aur", "isme", "ismein", "bhi", "tak", "se",
     "kam", "hoga", "milega", "batao", "dijiye", "bhai", "ji", "yeh", "ye", "woh", "koi", "jaisa",
 }
@@ -178,10 +183,19 @@ def detect_language(text):
     return "en"
 
 
+# "net price" / "net rate" is about money, not net fabric
+NOT_NET_FABRIC = re.compile(r"\bnet\s+(?:price|rate|amount|total|weight|wt)\b")
+
+# A "budget" below this is almost surely something else (a quantity, a design number)
+MIN_BUDGET = 50
+
+
 def parse(text):
     """Text -> {"attributes": {...}, "max_rate": number|None, "min_quantity": int|None,
     "language": "en"|"hi"|"gu", "matched_words": [...]}"""
     lower = text.lower().translate(DIGITS)
+    # Blank out phrases that only look like fabric words (same length keeps positions)
+    lower = NOT_NET_FABRIC.sub(lambda m: " " * len(m.group(0)), lower)
     attributes, matched = {}, []
     used = []  # (start, end) of text already claimed, so "zari border" is not also "zari"
 
@@ -206,7 +220,7 @@ def parse(text):
 
     return {
         "attributes": attributes,
-        "max_rate": _find_budget(lower),
+        "max_rate": _sensible_budget(_find_budget(lower)),
         "min_quantity": _find_quantity(lower),
         "language": detect_language(text),
         "matched_words": matched,
@@ -214,7 +228,11 @@ def parse(text):
 
 
 def _match_attribute(text, entries, used):
-    """All (value, word) found for one attribute, in the order they appear in the text."""
+    """All (value, word) found for one attribute, in the order they appear in the text.
+
+    Longer phrases are checked first and "use up" their part of the text, so
+    "zari border" counts as a zari border and not also as zari work. `used`
+    holds the (start, end) spans already taken, shared across attributes."""
     candidates = []
     for value, words in entries:
         for word in words:

@@ -21,7 +21,7 @@ export default function EnquiryPage() {
   const [text, setText] = useState("");
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
-  const [result, setResult] = useState(null);
+  const [answer, setAnswer] = useState(null); // the agent's answer
   const [dragging, setDragging] = useState(false);
   const [viewing, setViewing] = useState(null); // design shown full screen
   const fileInput = useRef(null);
@@ -93,7 +93,7 @@ export default function EnquiryPage() {
   function startOver() {
     removePhoto();
     setText("");
-    setResult(null);
+    setAnswer(null);
     setError("");
   }
 
@@ -106,7 +106,7 @@ export default function EnquiryPage() {
     setError("");
     setSending(true);
     try {
-      setResult(await sendEnquiry(photo, text));
+      setAnswer(await sendEnquiry(photo, text));
       // On phones the shortlist is below the form: bring it into view
       if (window.innerWidth < 1024) {
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
@@ -233,7 +233,7 @@ export default function EnquiryPage() {
             <Icon name="search" className="h-5 w-5" />
             {sending ? "Finding matches…" : "Find matches"}
           </button>
-          {(result || photo || text) && (
+          {(answer || photo || text) && (
             <button
               type="button"
               onClick={startOver}
@@ -249,8 +249,8 @@ export default function EnquiryPage() {
       <section ref={resultsRef} aria-live="polite" className="min-w-0 scroll-mt-20">
         {sending ? (
           <LoadingCards />
-        ) : result ? (
-          <Shortlist key={result.enquiry_id} result={result} onOpenImage={setViewing} />
+        ) : answer ? (
+          <Shortlist key={answer.enquiry_id} answer={answer} onOpenImage={setViewing} />
         ) : (
           <EmptyState />
         )}

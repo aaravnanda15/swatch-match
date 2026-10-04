@@ -12,6 +12,7 @@ whole flow can be tested with scripts/fake_whatsapp.py and no Meta account.
 
 import hashlib
 import hmac
+import logging
 import uuid
 
 import requests
@@ -27,6 +28,7 @@ from backend.config import (
     WHATSAPP_VERIFY_TOKEN,
 )
 
+log = logging.getLogger("swatch.whatsapp")
 GRAPH = f"https://graph.facebook.com/{CONFIG['whatsapp']['api_version']}"
 TIMEOUT = 20
 
@@ -114,14 +116,14 @@ def download_media(media_id):
         data.raise_for_status()
         return data.content
     except (requests.RequestException, KeyError, ValueError) as e:
-        raise WhatsAppError(f"Could not download the buyer's photo ({type(e).__name__}).")
+        raise WhatsAppError(f"Could not download the buyer's photo ({type(e).__name__}).") from e
 
 
 def _post_message(body, simulated=False):
     """Send one message; returns WhatsApp's message id.
     simulated=True: the buyer is a demo buyer, so never call Meta."""
     if dry_run() or simulated:
-        print(f"[whatsapp DRY RUN] to {body['to']}: {body.get('type')} {body.get('text') or body.get('image')}")
+        log.info("DRY RUN, not sent. To %s: %s %s", body["to"], body.get("type"), body.get("text") or body.get("image"))
         return f"dry-{uuid.uuid4().hex[:12]}"
     try:
         resp = requests.post(
@@ -131,7 +133,7 @@ def _post_message(body, simulated=False):
             timeout=TIMEOUT,
         )
     except requests.RequestException as e:
-        raise WhatsAppError(f"Could not reach WhatsApp ({type(e).__name__}).")
+        raise WhatsAppError(f"Could not reach WhatsApp ({type(e).__name__}).") from e
     if resp.status_code >= 400:
         detail = ""
         try:
@@ -161,5 +163,5 @@ def send_image(to, jpeg_bytes, filename, caption, simulated=False):
         upload.raise_for_status()
         media_id = upload.json()["id"]
     except (requests.RequestException, KeyError, ValueError) as e:
-        raise WhatsAppError(f"Could not upload {filename} to WhatsApp ({type(e).__name__}).")
+        raise WhatsAppError(f"Could not upload {filename} to WhatsApp ({type(e).__name__}).") from e
     return _post_message({"to": to, "type": "image", "image": {"id": media_id, "caption": caption}})

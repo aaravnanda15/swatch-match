@@ -25,7 +25,7 @@ def image_search(query_vector):
     if not ids:
         return {}
     raw = matrix @ query_vector
-    return {d: scoring.stretch(float(s), scoring.SCORING["image_range"]) for d, s in zip(ids, raw)}
+    return {d: scoring.stretch(float(s), scoring.SCORING["image_range"]) for d, s in zip(ids, raw, strict=True)}
 
 
 def parse_text_to_attributes(text):
@@ -54,7 +54,7 @@ def parse_text_to_attributes(text):
         if attr in ATTRIBUTES and value in ATTRIBUTES[attr]:
             attributes[attr] = value
     result["attributes"] = attributes
-    result["max_rate"] = _positive_number(answer.get("max_rate"))
+    result["max_rate"] = lexicon._sensible_budget(_positive_number(answer.get("max_rate")))
     result["min_quantity"] = _positive_number(answer.get("min_quantity"))
     if answer.get("language") in LANGUAGES:
         result["language"] = answer["language"]
@@ -146,7 +146,7 @@ def text_search(phrase):
         return {}
     query = embeddings.encode_texts([phrase])[0]
     raw = matrix @ query
-    return {d: scoring.stretch(float(s), scoring.SCORING["text_range"]) for d, s in zip(ids, raw)}
+    return {d: scoring.stretch(float(s), scoring.SCORING["text_range"]) for d, s in zip(ids, raw, strict=True)}
 
 
 def attribute_filter(wanted, designs):

@@ -274,7 +274,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
       {item.answer ? (
         <Shortlist
           key={`${item.mode}|${item.text}`}
-          result={item.answer}
+          answer={item.answer}
           onOpenImage={setViewing}
           whatsapp={{
             enquiryId: item.id,

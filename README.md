@@ -31,7 +31,9 @@ memory, which is slow and depends on whoever is on duty.
    and press **Approve & copy**, then paste it into WhatsApp. Every approved reply is saved in the **Log**.
 5. **Optional, with WhatsApp connected:** buyers' messages arrive in an **Inbox** tab on their own, already matched.
    Staff check the shortlist and tap **Send on WhatsApp**, and the reply and the design photos go to the buyer.
-6. **Insights** turn enquiries into business information: reply rate and speed, what buyers ask for, and
+6. **Staff keep stock and price up to date** in the **Catalogue** tab (*Stock & price*). Edits are written back to
+   `stock.csv`, so it stays the single source of truth.
+7. **Insights** turn enquiries into business information: reply rate and speed, what buyers ask for, and
    **missed demand**, meaning requests nothing in stock fully matched and best matches that were out of stock. In
    effect it's a restocking list written by the buyers.
 
@@ -41,7 +43,10 @@ It **shortlists, it never decides, and nothing reaches a buyer until staff appro
 
 ```mermaid
 flowchart LR
-    A[Buyer's photo and/or text] --> R{Router:<br/>what was sent?}
+    W[WhatsApp message<br/>or buyer chat page] --> IN[inbox: skip repeats,<br/>merge photo + text]
+    E[Enquiry tab:<br/>staff paste it] --> A
+    IN --> A[Buyer's photo and/or text]
+    A --> R{Router:<br/>what was sent?}
     R -- photo --> IS[image_search<br/>CLIP photo vs catalogue]
     IS --> DP[describe_photo<br/>tags + shade]
     R -- text --> PT[parse_text_to_attributes<br/>Gemini, keyword list as backup]
@@ -56,7 +61,8 @@ flowchart LR
     S --> CS[check_stock<br/>stock.csv only, drop over-budget]
     CS --> OUT[Top 5 with label, reason, stock, rate]
     OUT --> DR[draft_reply<br/>templates, numbers from the database]
-    DR --> AP[Staff edit + Approve<br/>copied + logged]
+    DR --> AP[Staff edit + Approve & copy<br/>or Send on WhatsApp]
+    AP --> LOG[Log + Insights<br/>reply speed, missed demand]
 ```
 
 The design choices that keep it reliable:
@@ -118,6 +124,10 @@ Set `DEMO_MODE=1` in `.env` (or in the host's settings):
 - **Sample week:** a clearly labelled sample week of enquiries fills the Insights tab. It uses real matching with
   made-up buyers and dates, never appears in the Inbox or Log, and **Clear sample data** removes it.
 - **One-tap photos:** the Enquiry tab always offers one-tap sample buyer photos.
+- **Buyer chat:** `<app link>/#buyer` is a WhatsApp-style chat page; the Inbox shows a QR code for it. Anyone can
+  play the buyer from their own phone: their messages reach the Inbox through the same code as real WhatsApp, and
+  the shop's replies, with design photos, appear on that phone. This page needs no passcode, works only in demo
+  mode, and is limited to 10 messages a minute per buyer.
 
 ## Live demo
 
@@ -174,9 +184,17 @@ re-lit, blurred and recompressed copies of catalogue photos, made by `scripts/ma
 stock are harder. For a number you can trust, photograph 30 or more real pieces, add them to `test_queries/`, and
 list them in `test_queries.csv`.
 
+**Treat it as an upper bound.** The test messages, the staff tags in `catalogue/tags.csv` and the keyword list were
+written by the same team, and the keyword list was improved after looking at failed test messages (for example the
+Gujarati word for ikat was added). A fairer check is 10 to 20 messages written by someone who has not seen the code
+or the catalogue tags.
+
 ## Deploy to Hugging Face Spaces
 
-1. Create a new Space: **SDK: Docker**, hardware: **CPU basic (free)**.
+Docker Spaces need a **Hugging Face PRO** subscription (about $9 a month), even on the basic CPU. For a free demo,
+use the Cloudflare quick tunnel in *Live demo* instead.
+
+1. Create a new Space: **SDK: Docker**, hardware: **CPU basic**.
 2. Push this repository to the Space, for example with
    `git remote add space https://huggingface.co/spaces/<you>/swatch-match` and then `git push space HEAD:main`.
    Use a Hugging Face access token with write permission as the password.
@@ -212,6 +230,24 @@ account (free).
 6. When it works, add the shop's real number in Meta (**WhatsApp → Phone numbers**). A number used with the Cloud
    API can't stay on the normal WhatsApp app at the same time.
 
+**What happens to one message:**
+
+```mermaid
+sequenceDiagram
+    participant B as Buyer (WhatsApp)
+    participant M as Meta
+    participant S as Swatch Match
+    participant St as Staff
+    B->>M: photo, then "isme blue chahiye"
+    M->>S: webhook (signed)
+    S-->>M: 200 OK straight away
+    S->>S: skip repeats, merge photo + text, run the agent
+    St->>S: open the Inbox, tick designs, edit the reply
+    St->>S: Send on WhatsApp (confirm)
+    S->>M: reply text + design photos
+    M->>B: delivered
+```
+
 **How it behaves:**
 
 - **Photo and text together:** a photo plus the text sent right after it (within 2 minutes, `merge_seconds` in
@@ -241,17 +277,23 @@ python scripts/fake_whatsapp.py --text "isme blue silk chahiye"        # merges 
 
 ```
 backend/
-  main.py           API routes; also serves the built UI
+  main.py           the app: login, health, upload limit; serves the built UI
+  routes/           API routes: catalogue.py, enquiries.py, whatsapp.py (Inbox + sending), demo.py
   auth.py           optional staff passcode (STAFF_PASSCODE)
   enquiries.py      run an enquiry through the agent and save it (app form and WhatsApp share this)
   whatsapp.py       the ONLY file that talks to WhatsApp (webhook check, parsing, media, sending)
   inbox.py          incoming WhatsApp messages -> enquiries (dedupe, photo + text merge)
+  stock_csv.py      writes staff stock and price edits back into catalogue/stock.csv
+  insights.py       numbers for the Insights tab, including missed demand
+  demo.py           demo mode: simulated buyers
+  demo_history.py   demo mode: the clearly labelled sample week for Insights
   ingest.py         stock.csv + tags.csv + photos -> SQLite (embeddings, tags, stock)
   llm.py            the ONLY file that talks to an LLM (Gemini, or a "none" provider)
   embeddings.py     CLIP model, image and text vectors
   tagging.py        Gemini tags with CLIP zero-shot fallback
   images.py         upload checks (type, size, real format), EXIF rotation, shade check
-  db.py             SQLite tables: designs, stock, tags, embeddings, enquiries, wa_seen, audit_log
+  db.py             SQLite tables: designs, stock, tags, embeddings, enquiries, wa_seen,
+                    chat_messages, stock_changes, audit_log
   agent/
     orchestrator.py the router: which tools, in what order, with a trace
     tools.py        image_search, describe_photo, parse_text_to_attributes, attribute_filter,
@@ -259,16 +301,19 @@ backend/
     scoring.py      score mix, labels, reasons, shade note
     lexicon.py      keyword list for English / Hinglish / Hindi / Gujarati
     templates.py    reply and question templates in 4 languages
-frontend/           React + Vite + Tailwind; Inbox (with WhatsApp) / Enquiry / Catalogue / Log tabs
+frontend/           React + Vite + Tailwind; Inbox / Enquiry / Catalogue / Insights / Log tabs,
+                    the buyer chat page (#buyer) and the "How it works" screen
 catalogue/          sample photos, stock.csv, tags.csv, CREDITS.md
 evaluate.py         top-1 / top-5 on test_queries.csv
 scripts/            sample catalogue fetcher, test query maker, fake WhatsApp sender
 config.yaml         thresholds, weights, vocabulary, Gemini model, upload limits
+docs/PLAN.md        the original build plan and decisions
 ```
 
 API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /api/audit` · `GET /api/designs` ·
 `PATCH /api/designs/{id}/tags` · `GET /api/health` · `POST /api/login` · `GET /api/inbox` · `GET /api/inbox/{id}` ·
-`POST /api/inbox/{id}/dismiss` · `POST /api/whatsapp/send` · `GET|POST /api/whatsapp/webhook`.
+`POST /api/inbox/{id}/dismiss` · `POST /api/whatsapp/send` · `GET|POST /api/whatsapp/webhook` ·
+`PATCH /api/designs/{id}/stock` · `GET /api/insights` · `/api/demo/...` (demo mode only).
 
 ## Limits
 
@@ -280,6 +325,8 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
 - **The keyword list** misses misspellings and negation (*"not red"*). Gemini handles these when a key is set.
 - **One photo per enquiry**, and one main product per photo.
 - **One shared passcode**, not separate staff accounts. The Log does not record who approved each reply.
+- **The buyer chat page is open to anyone with the link** in demo mode (rate-limited), and so is the whole app if
+  no `STAFF_PASSCODE` is set.
 
 ## What could come next
 

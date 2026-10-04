@@ -40,6 +40,9 @@ def read_stock_csv():
             except (TypeError, ValueError):
                 print(f"  ! line {line_no}: quantity or rate is not a number, skipped")
                 continue
+            if quantity < 0 or rate <= 0:
+                print(f"  ! line {line_no}: stock below 0 or rate not above 0, skipped")
+                continue
             if not design_id or design_id in seen:
                 print(f"  ! line {line_no}: empty or duplicate design_id, skipped")
                 continue
@@ -127,7 +130,7 @@ def ingest(retag=False):
     provider = llm.get_llm()
     print(f"Tagging {len(need_tags)} designs (LLM: {provider.name})...")
     ids, matrix = db.load_embeddings()
-    vector_by_id = dict(zip(ids, matrix))
+    vector_by_id = dict(zip(ids, matrix, strict=True))
     pause = CONFIG["llm"].get("seconds_between_calls", 0)
     failures_in_a_row = 0
     counts = {"gemini": 0, "clip": 0}

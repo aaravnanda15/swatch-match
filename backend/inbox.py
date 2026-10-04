@@ -7,6 +7,7 @@ combined into one photo + text enquiry. Nothing is ever sent from here:
 staff review the shortlist and tap Send in the app.
 """
 
+import logging
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -15,6 +16,7 @@ from backend import db, enquiries, whatsapp
 from backend.config import CONFIG
 from backend.images import BadImage, load_image
 
+log = logging.getLogger("swatch.inbox")
 MERGE_SECONDS = CONFIG["whatsapp"]["merge_seconds"]
 MAX_TEXT = CONFIG["uploads"]["max_text_chars"]
 
@@ -28,9 +30,9 @@ def handle_messages(messages):
         try:
             with _lock:
                 result = handle_message(message)
-            print(f"[inbox] {message['type']} from {mask(message['phone'])}: {result}")
-        except Exception as e:  # never let one bad message stop the others
-            print(f"[inbox] failed on message {message.get('id')}: {type(e).__name__}: {e}")
+            log.info("%s from %s: %s", message["type"], mask(message["phone"]), result)
+        except Exception:  # never let one bad message stop the others
+            log.exception("failed on message %s", message.get("id"))
 
 
 def handle_message(m):
@@ -83,7 +85,7 @@ def _save_unsupported(buyer, note):
 
 
 def mask(phone):
-    """919812345678 -> +91 98•••••678 (for logs and lists)."""
+    """910000000101 -> +91 00•••••101 (for logs and lists)."""
     phone = phone or ""
     if len(phone) < 8:
         return phone

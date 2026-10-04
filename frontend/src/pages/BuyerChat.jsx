@@ -11,9 +11,12 @@ const POLL_MS = 2000;
 const SUGGESTIONS = ["lal bandhani saree chahiye", "blue silk dupatta, 20 piece", "लाल बांधनी साड़ी 2000 तक"];
 const SAMPLE_PHOTO = "q_D010_text.jpg";
 
+const CHAT_PREFIX = "9100"; // made-up numbers: no real Indian mobile starts with 0
+
 function loadBuyer() {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const buyer = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    return buyer?.phone?.startsWith(CHAT_PREFIX) ? buyer : null; // older demo numbers: start again
   } catch {
     return null;
   }
@@ -37,8 +40,8 @@ function Welcome({ onStart }) {
   const [name, setName] = useState("");
   function start(e) {
     e.preventDefault();
-    // A made-up number that marks this as a demo chat buyer (starts with 9197)
-    const phone = "9197" + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
+    // A made-up number that marks this as a demo chat buyer
+    const phone = CHAT_PREFIX + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
     onStart({ name: name.trim() || "Buyer", phone });
   }
   return (

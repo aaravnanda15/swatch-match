@@ -92,8 +92,9 @@ export default function AboutSheet({ open, onClose }) {
           <Fact value="4" label="languages" note="English, Hindi, Gujarati, Hinglish" />
         </div>
         <p className="mt-2 text-xs text-faint">
-          Measured with evaluate.py on the sample catalogue, using edited copies of catalogue photos and hand-written
-          messages. Real phone photos are harder; the README explains how to measure on your own stock.
+          Measured with evaluate.py on 4 Oct 2026 on the sample catalogue, using edited copies of catalogue photos
+          and hand-written messages. The messages, the staff tags and the keyword list were written by the same
+          team, so treat this as an upper bound; real phone photos and real buyers are harder.
         </p>
 
         <p className="mt-6 text-xs text-muted">

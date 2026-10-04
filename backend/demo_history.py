@@ -84,7 +84,7 @@ def seed(count=42, days=7, seed_value=11):
                 image_file, text = enquiries.save_upload(img), ""
 
             on_whatsapp = rng.random() < 0.7
-            buyer = {"phone": f"9199000{rng.randint(10000, 99999)}", "name": rng.choice(BUYERS),
+            buyer = {"phone": f"91000{rng.randint(1000000, 9999999)}", "name": rng.choice(BUYERS),
                      "message_id": f"wamid.SAMPLE{i}"} if on_whatsapp else None
             answer = enquiries.run(text, img, image_file, whatsapp=buyer)
             enquiry_id = answer["enquiry_id"]

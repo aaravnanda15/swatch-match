@@ -60,120 +60,168 @@ def is_vague(query):
     return not useful and not query["max_rate"]
 
 
+class Run:
+    """What one enquiry collects as it goes through the steps below."""
+
+    def __init__(self, text, img):
+        self.text = (text or "").strip()
+        self.img = img
+        self.trace = Trace()
+        self.mode = decide_mode(img is not None, bool(self.text))
+        self.designs = {d["design_id"]: d for d in db.list_designs()}
+        self.fallback_reasons = []
+        self.clarifying_question = None
+        self.photo = None  # tags + colour of the buyer's photo
+        self.query = {"attributes": {}, "max_rate": None, "min_quantity": None, "language": "en", "source": None}
+        # One number per design, 0-1, from each kind of matching
+        self.image_scores, self.attr_scores, self.text_scores = {}, {}, {}
+
+
 def handle_enquiry(text, img):
     """text: the buyer's message ("" if none). img: a PIL image or None.
-    Returns everything the Enquiry screen shows (see the return at the bottom)."""
-    trace = Trace()
-    text = (text or "").strip()
-    mode = decide_mode(img is not None, bool(text))
-    designs = {d["design_id"]: d for d in db.list_designs()}
-    fallback_reasons = []
-    clarifying_question = None
+    Returns everything the Enquiry and Inbox screens show."""
+    run = Run(text, img)
+    if run.img is not None:
+        read_photo(run)
+    if run.text:
+        read_text(run)
+    pool = narrow_to_lookalikes(run)
+    scores, weights = score_designs(run, pool)
+    kept, stock, over_budget = check_stock_and_budget(run, pool, scores)
+    results, no_match = label_results(run, kept, scores, stock)
 
-    image_scores, attr_scores, text_scores = {}, {}, {}
-    photo = None  # tags + colour of the buyer's photo
-    query = {"attributes": {}, "max_rate": None, "min_quantity": None, "language": "en", "source": None}
+    return {
+        "mode": run.mode,
+        "fallback_mode": bool(run.fallback_reasons),
+        "fallback_reason": " ".join(run.fallback_reasons) or None,
+        "query": {k: run.query.get(k) for k in ("attributes", "max_rate", "min_quantity", "language")},
+        "photo_tags": run.photo["tags"] if run.photo else None,
+        "weights": {k: round(v, 2) for k, v in weights.items()},
+        "no_match": no_match,
+        "clarifying_question": run.clarifying_question,
+        "over_budget_removed": len(over_budget),
+        "results": results,
+        "trace": run.trace.steps,
+    }
 
-    # ---- 1. The photo ----
-    if img is not None:
+
+def read_photo(run):
+    """Compare the buyer's photo with every catalogue photo, and describe it."""
+    t = time.perf_counter()
+    vector = tools.encode_photo(run.img)
+    run.image_scores = tools.image_search(vector)
+    run.trace.add("image_search", "Buyer sent a photo: compare it with every catalogue photo",
+                  "buyer's photo", f"closest: {', '.join(tools.top_ids(run.image_scores, 3))}", t)
+
+    t = time.perf_counter()
+    run.photo = tools.describe_photo(run.img, vector)
+    if run.photo["llm_failed"]:
+        run.fallback_reasons.append("The AI could not describe the photo, so basic photo tags were used.")
+    run.trace.add("describe_photo", "Note the photo's pattern, border and shade, to explain each match",
+                  "buyer's photo", _describe_tags(run.photo["tags"], run.photo["source"]), t)
+
+
+def read_text(run):
+    """Work out what the buyer asked for; ask a question back if it is too vague;
+    then compare the request with the tags and (via CLIP) with the photos."""
+    t = time.perf_counter()
+    run.query = query = tools.parse_text_to_attributes(run.text)
+    if query["llm_failed"]:
+        run.fallback_reasons.append("The AI could not be reached, so the message was read with the keyword list.")
+    elif query["source"] == "keywords":
+        run.fallback_reasons.append("No AI key is set, so the message was read with the keyword list.")
+    run.trace.add("parse_text_to_attributes", "Buyer sent text: work out what they are asking for",
+                  run.text, _describe_query(query), t)
+
+    if run.img is None and is_vague(query):
+        run.mode = "vague"
         t = time.perf_counter()
-        vector = tools.encode_photo(img)
-        image_scores = tools.image_search(vector)
-        trace.add("image_search", "Buyer sent a photo: compare it with every catalogue photo",
-                  "buyer's photo", f"closest: {', '.join(tools.top_ids(image_scores, 3))}", t)
+        clarify = tools.ask_clarifying_question(run.text, query)
+        if clarify["llm_failed"]:
+            run.fallback_reasons.append("The AI could not write the question, so a standard one was used.")
+        by = "Gemini" if clarify["source"] == "gemini" else "template"
+        run.trace.add("ask_clarifying_question", "Too little to match on: ask the buyer one question",
+                      run.text, f"{clarify['question']} (by {by})", t)
+        run.clarifying_question = clarify["question"]
 
+    if query["attributes"]:
         t = time.perf_counter()
-        photo = tools.describe_photo(img, vector)
-        if photo["llm_failed"]:
-            fallback_reasons.append("The AI could not describe the photo, so basic photo tags were used.")
-        trace.add("describe_photo", "Note the photo's pattern, border and shade, to explain each match",
-                  "buyer's photo", _describe_tags(photo["tags"], photo["source"]), t)
+        run.attr_scores = tools.attribute_filter(query["attributes"], run.designs.values())
+        full = sum(1 for score, _ in run.attr_scores.values() if score == 1)
+        run.trace.add("attribute_filter", "Compare the requested details with each design's tags",
+                      query["attributes"], f"{full} of {len(run.designs)} designs match every detail", t)
 
-    # ---- 2. The text ----
-    if text:
-        t = time.perf_counter()
-        query = tools.parse_text_to_attributes(text)
-        if query["llm_failed"]:
-            fallback_reasons.append("The AI could not be reached, so the message was read with the keyword list.")
-        elif query["source"] == "keywords":
-            fallback_reasons.append("No AI key is set, so the message was read with the keyword list.")
-        trace.add("parse_text_to_attributes", "Buyer sent text: work out what they are asking for",
-                  text, _describe_query(query), t)
+    t = time.perf_counter()
+    phrase = tools.english_phrase(query["attributes"], run.text)
+    run.text_scores = tools.text_search(phrase)
+    run.trace.add("text_search", "Compare the request in words with every catalogue photo",
+                  phrase, f"closest: {', '.join(tools.top_ids(run.text_scores, 3))}", t)
 
-        if img is None and is_vague(query):
-            mode = "vague"
-            t = time.perf_counter()
-            clarify = tools.ask_clarifying_question(text, query)
-            if clarify["llm_failed"]:
-                fallback_reasons.append("The AI could not write the question, so a standard one was used.")
-            by = "Gemini" if clarify["source"] == "gemini" else "template"
-            trace.add("ask_clarifying_question", "Too little to match on: ask the buyer one question",
-                      text, f"{clarify['question']} (by {by})", t)
-            clarifying_question = clarify["question"]
 
-        if query["attributes"]:
-            t = time.perf_counter()
-            attr_scores = tools.attribute_filter(query["attributes"], designs.values())
-            full = sum(1 for score, _ in attr_scores.values() if score == 1)
-            trace.add("attribute_filter", "Compare the requested details with each design's tags",
-                      query["attributes"], f"{full} of {len(designs)} designs match every detail", t)
+def narrow_to_lookalikes(run):
+    """Photo + text: the photo picks the design, the words only re-rank those
+    lookalikes ("this design but in blue"). Otherwise every design is a candidate."""
+    if run.mode != "image_and_text":
+        return list(run.designs)
+    t = time.perf_counter()
+    pool = tools.top_ids(run.image_scores, IMAGE_POOL)
+    run.trace.add("narrow_to_lookalikes", "Photo and text: the photo picks the design, the words re-rank",
+                  f"{len(run.designs)} designs", f"{len(pool)} that look most like the photo", t)
+    return pool
 
-        t = time.perf_counter()
-        phrase = tools.english_phrase(query["attributes"], text)
-        text_scores = tools.text_search(phrase)
-        trace.add("text_search", "Compare the request in words with every catalogue photo",
-                  phrase, f"closest: {', '.join(tools.top_ids(text_scores, 3))}", t)
 
-    # ---- 3. Photo + text: the photo picks the design, the words re-rank ----
-    pool = list(designs)
-    if mode == "image_and_text":
-        t = time.perf_counter()
-        pool = tools.top_ids(image_scores, IMAGE_POOL)
-        trace.add("narrow_to_lookalikes", "Photo and text: the photo picks the design, the words re-rank",
-                  f"{len(designs)} designs", f"{len(pool)} that look most like the photo", t)
-
-    # ---- 4. One score per design ----
-    weights = scoring.weights_for(mode, bool(image_scores), bool(attr_scores), bool(text_scores))
+def score_designs(run, pool):
+    """One score per design: a weighted mix of the photo, tag and words scores."""
+    weights = scoring.weights_for(run.mode, bool(run.image_scores), bool(run.attr_scores), bool(run.text_scores))
     scores = {}
     for design_id in pool:
         signals = {
-            "image": image_scores.get(design_id, 0.0),
-            "attributes": attr_scores.get(design_id, (0.0, []))[0],
-            "text": text_scores.get(design_id, 0.0),
+            "image": run.image_scores.get(design_id, 0.0),
+            "attributes": run.attr_scores.get(design_id, (0.0, []))[0],
+            "text": run.text_scores.get(design_id, 0.0),
         }
         scores[design_id] = (scoring.combine(signals, weights), signals)
+    return scores, weights
 
-    # ---- 5. Stock and rate (only from stock.csv); drop anything over budget ----
+
+def check_stock_and_budget(run, pool, scores):
+    """Stock and rate for the best candidates (only from stock.csv); drop
+    anything over the buyer's budget. Returns (top designs, stock, over budget)."""
     ranked = sorted(pool, key=lambda d: -scores[d][0])[:CANDIDATES]
     t = time.perf_counter()
-    stock = tools.check_stock([designs[d] for d in ranked], query["max_rate"], query["min_quantity"])
+    max_rate = run.query["max_rate"]
+    stock = tools.check_stock([run.designs[d] for d in ranked], max_rate, run.query["min_quantity"])
     over_budget = [d for d in ranked if not stock[d]["within_budget"]]
     kept = [d for d in ranked if stock[d]["within_budget"]][:TOP_K]
     got = f"{sum(stock[d]['in_stock'] for d in ranked)} of {len(ranked)} in stock"
-    if query["max_rate"]:
-        got += f"; {len(over_budget)} over ₹{query['max_rate']:g} removed"
-    trace.add("check_stock", "Read stock and rate from stock.csv for the best candidates",
-              f"top {len(ranked)} designs", got, t)
+    if max_rate:
+        got += f"; {len(over_budget)} over ₹{max_rate:g} removed"
+    run.trace.add("check_stock", "Read stock and rate from stock.csv for the best candidates",
+                  f"top {len(ranked)} designs", got, t)
+    return kept, stock, over_budget
 
-    # ---- 6. Label and explain each result (computed, not generated) ----
+
+def label_results(run, kept, scores, stock):
+    """Label and explain each result. Computed from scores and tags, never
+    written by an AI, so nothing can be made up."""
+    asked = run.query["attributes"]
     # Only quote "same pattern/border" when Gemini described the photo; basic
     # CLIP photo tags are too rough to state as fact
-    quotable_photo_tags = None
-    if photo is not None:
-        quotable_photo_tags = photo["tags"] if photo["source"] == "gemini" else {}
+    photo_tags = None
+    if run.photo is not None:
+        photo_tags = run.photo["tags"] if run.photo["source"] == "gemini" else {}
 
     results = []
     for design_id in kept:
-        d = designs[design_id]
+        d = run.designs[design_id]
         score, signals = scores[design_id]
-        matched = attr_scores.get(design_id, (0.0, []))[1]
+        matched = run.attr_scores.get(design_id, (0.0, []))[1]
         shade = None
-        if photo is not None:
-            shade = scoring.shade_difference(photo["colour"], tools.design_colour(d["image_file"]))
+        if run.photo is not None:
+            shade = scoring.shade_difference(run.photo["colour"], tools.design_colour(d["image_file"]))
         label = scoring.label_for(score)
-        # "Very close" only when everything the buyer asked for matches
-        if label == "very_close" and len(matched) < len(query["attributes"]):
-            label = "similar"
+        if label == "very_close" and len(matched) < len(asked):
+            label = "similar"  # "Very close" only when everything asked for matches
         results.append(
             {
                 "design_id": design_id,
@@ -184,8 +232,8 @@ def handle_enquiry(text, img):
                 "signals": {k: round(v, 3) for k, v in signals.items()},
                 "label": label,
                 "label_text": scoring.LABELS[label],
-                "reason": scoring.reason_for(signals, d["tags"], query["attributes"], quotable_photo_tags, shade),
-                "shade_note": scoring.needs_shade_note(query["attributes"], matched, shade, photo is not None),
+                "reason": scoring.reason_for(signals, d["tags"], asked, photo_tags, shade),
+                "shade_note": scoring.needs_shade_note(asked, matched, shade, run.photo is not None),
                 "matched_attributes": matched,
                 **stock[design_id],
             }
@@ -196,21 +244,8 @@ def handle_enquiry(text, img):
     if no_match:
         for r in results:
             r["label"] = "none"
-            r["label_text"] = "Best guess" if mode == "vague" else "Nearest alternative"
-
-    return {
-        "mode": mode,
-        "fallback_mode": bool(fallback_reasons),
-        "fallback_reason": " ".join(fallback_reasons) or None,
-        "query": {k: query.get(k) for k in ("attributes", "max_rate", "min_quantity", "language")},
-        "photo_tags": photo["tags"] if photo else None,
-        "weights": {k: round(v, 2) for k, v in weights.items()},
-        "no_match": no_match,
-        "clarifying_question": clarifying_question,
-        "over_budget_removed": len(over_budget),
-        "results": results,
-        "trace": trace.steps,
-    }
+            r["label_text"] = "Best guess" if run.mode == "vague" else "Nearest alternative"
+    return results, no_match
 
 
 def _describe_tags(tags, source):

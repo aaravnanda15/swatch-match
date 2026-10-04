@@ -12,12 +12,15 @@ so stock numbers and rates never come from the LLM.
 """
 
 import json
+import logging
 import re
 import threading
 import time
 from contextlib import contextmanager
 
 from backend.config import ATTRIBUTES, CONFIG, GEMINI_API_KEY
+
+log = logging.getLogger("swatch.llm")
 
 TAG_PROMPT = """You are helping a fabric and saree wholesaler catalogue their stock.
 Look at the photo and describe the main product in it.
@@ -143,7 +146,7 @@ class GeminiProvider:
             return result
         except Exception as e:  # network, quota, bad key, timeout: never crash the app
             self.last_error = f"{type(e).__name__}: {str(e)[:200]}"
-            print(f"[llm] Gemini call failed: {self.last_error}")
+            log.warning("Gemini call failed: %s", self.last_error)
             return None
 
     def tag_image(self, jpeg_bytes):

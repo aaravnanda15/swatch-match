@@ -66,7 +66,7 @@ def main():
     parser.add_argument("--photo", help="path of a photo inside the project, e.g. test_queries/q_D012.jpg")
     parser.add_argument("--text", default="", help="message text (or the photo caption)")
     parser.add_argument("--voice", action="store_true", help="send a voice note (unsupported type)")
-    parser.add_argument("--phone", default="919800000001")
+    parser.add_argument("--phone", default="910000000001")
     parser.add_argument("--name", default="Test Buyer")
     parser.add_argument("--id", help="WhatsApp message id (default: random)")
     parser.add_argument("--id-again", action="store_true", help="send the same message twice, like a Meta retry")
@@ -87,7 +87,7 @@ def main():
         signature = "0" * 64
     headers = {"Content-Type": "application/json", "X-Hub-Signature-256": f"sha256={signature}"}
 
-    for attempt in range(2 if args.id_again else 1):
+    for _ in range(2 if args.id_again else 1):
         resp = requests.post(args.url, data=body, headers=headers, timeout=30)
         print(f"sent {message_id} -> {resp.status_code} {resp.text[:100]}")
 

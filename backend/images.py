@@ -29,8 +29,8 @@ def load_image(data: bytes) -> Image.Image:
     try:
         img = Image.open(io.BytesIO(data))
         img.load()
-    except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
-        raise BadImage("That file is not a photo we can read. Please send a JPG, PNG or WEBP.")
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as e:
+        raise BadImage("That file is not a photo we can read. Please send a JPG, PNG or WEBP.") from e
     # Check the real format, not the file name (a renamed PDF or GIF is caught here).
     if img.format not in ALLOWED_FORMATS:
         raise BadImage(f"{img.format or 'This'} files are not supported. Please send a JPG, PNG or WEBP photo.")

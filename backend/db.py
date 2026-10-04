@@ -11,11 +11,12 @@ Tables:
   wa_seen     every WhatsApp message id received, so Meta's retries are ignored
   stock_changes  every stock / rate edit made by staff in the app
   chat_messages  the WhatsApp conversation with each buyer, both directions
-  audit_log   approved replies (filled in step 6)
+  audit_log   approved replies (copied or sent on WhatsApp)
 """
 
 import json
 import sqlite3
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -88,11 +89,17 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
+@contextmanager
 def connect():
-    """Open the database. Use as `with connect() as conn:` so changes are saved."""
-    conn = sqlite3.connect(DB_FILE)
+    """`with connect() as conn:` opens the database, saves the changes at the
+    end (or undoes them on an error) and closes the connection."""
+    conn = sqlite3.connect(DB_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
-    return conn
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
 
 
 # Columns added after the first version. Older databases get them on start-up.
