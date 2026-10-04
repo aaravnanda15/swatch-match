@@ -9,6 +9,7 @@ Tables:
   enquiries   one row per buyer enquiry (text, saved photo, enquiry type, the
               agent's answer; WhatsApp enquiries also have the buyer and a status)
   wa_seen     every WhatsApp message id received, so Meta's retries are ignored
+  stock_changes  every stock / rate edit made by staff in the app
   audit_log   approved replies (filled in step 6)
 """
 
@@ -54,6 +55,15 @@ CREATE TABLE IF NOT EXISTS wa_seen (
     message_id  TEXT PRIMARY KEY,
     phone       TEXT NOT NULL,
     received_at INTEGER NOT NULL      -- unix seconds
+);
+CREATE TABLE IF NOT EXISTS stock_changes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    changed_at   TEXT NOT NULL DEFAULT (datetime('now')),
+    design_id    TEXT NOT NULL,
+    old_quantity INTEGER,
+    new_quantity INTEGER,
+    old_rate     REAL,
+    new_rate     REAL
 );
 CREATE TABLE IF NOT EXISTS audit_log (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,6 +169,22 @@ def get_design(design_id):
     with connect() as conn:
         row = conn.execute(DESIGN_QUERY + " WHERE d.design_id = ?", (design_id,)).fetchone()
     return _design_from_row(row) if row else None
+
+
+def update_stock(design_id, quantity, rate):
+    """Staff changed stock or rate in the app (stock.csv is updated too, see stock_csv.py)."""
+    with connect() as conn:
+        old = conn.execute(
+            "SELECT quantity_available, rate FROM stock WHERE design_id = ?", (design_id,)
+        ).fetchone()
+        conn.execute(
+            "UPDATE stock SET quantity_available = ?, rate = ? WHERE design_id = ?", (quantity, rate, design_id)
+        )
+        conn.execute(
+            "INSERT INTO stock_changes (design_id, old_quantity, new_quantity, old_rate, new_rate) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (design_id, old["quantity_available"], quantity, old["rate"], rate),
+        )
 
 
 # ---------- tags ----------

@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import auth, db, demo, demo_history, embeddings, enquiries, inbox, insights, llm, whatsapp
+from backend import auth, db, demo, demo_history, embeddings, enquiries, inbox, insights, llm, stock_csv, whatsapp
 from backend.agent import templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, DEMO_MODE, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, load_image_file, to_jpeg_bytes
@@ -402,6 +402,31 @@ def upload(image_file: str):
     if path.parent != UPLOAD_DIR.resolve() or not path.is_file():
         raise HTTPException(404, "Image not found")
     return FileResponse(path)
+
+
+class StockUpdate(BaseModel):
+    quantity_available: int
+    rate: float
+
+
+@app.patch("/api/designs/{design_id}/stock")
+def update_stock(design_id: str, update: StockUpdate):
+    """Staff edit stock and rate. Saved to stock.csv first (the source of truth), then the database."""
+    if db.get_design(design_id) is None:
+        raise HTTPException(404, "Design not found")
+    if not 0 <= update.quantity_available <= 1_000_000:
+        raise HTTPException(400, "Stock must be a whole number from 0 to 1,000,000.")
+    if not 0 < update.rate <= 10_000_000:
+        raise HTTPException(400, "Rate must be more than ₹0.")
+    rate = round(update.rate, 2)
+    try:
+        stock_csv.update_row(design_id, update.quantity_available, rate)
+    except KeyError:
+        raise HTTPException(400, "This design is not in stock.csv.")
+    except OSError as e:
+        raise HTTPException(500, f"Could not save stock.csv ({type(e).__name__}).")
+    db.update_stock(design_id, update.quantity_available, rate)
+    return db.get_design(design_id)
 
 
 @app.get("/api/images/{image_file}")

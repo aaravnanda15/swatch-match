@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getAttributes, getDesigns, imageUrl, saveTags } from "../api.js";
+import { getAttributes, getDesigns, imageUrl, saveStock, saveTags } from "../api.js";
 import { rupees } from "../format.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
@@ -77,7 +77,9 @@ export default function CataloguePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Catalogue</h2>
-          <p className="mt-1 text-sm text-muted">Correct tags here so matching works better. Stock and rate come from stock.csv.</p>
+          <p className="mt-1 text-sm text-muted">
+            Update stock and price, and correct tags so matching works better. Changes are saved to stock.csv too.
+          </p>
         </div>
         <dl className="flex gap-2 text-center">
           <Stat value={designs.length} label="designs" />
@@ -152,6 +154,7 @@ function Stat({ value, label }) {
 
 function DesignCard({ design, attributes, onSaved, onOpenImage }) {
   const [editing, setEditing] = useState(false);
+  const [editingStock, setEditingStock] = useState(false);
   const [draft, setDraft] = useState(design.tags);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -159,6 +162,7 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
   function startEditing() {
     setDraft(design.tags);
     setError("");
+    setEditingStock(false);
     setEditing(true);
   }
 
@@ -213,8 +217,8 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
         </div>
       </div>
 
-      {!editing && (
-        <div className="flex items-end justify-between gap-2 border-t border-line/70 px-3 py-2.5">
+      {!editing && !editingStock && (
+        <div className="space-y-2 border-t border-line/70 px-3 py-2.5">
           <div className="flex flex-wrap gap-1">
             {/* Each tag value once; skip "none"/"unknown" which add nothing */}
             {[...new Set(Object.keys(LABELS).map((attr) => design.tags[attr]))]
@@ -225,14 +229,37 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
                 </span>
               ))}
           </div>
-          <button
-            onClick={startEditing}
-            className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-madder hover:bg-madder-soft"
-          >
-            <Icon name="edit" className="h-4 w-4" />
-            Edit tags
-          </button>
+          <div className="flex justify-end gap-1">
+            <button
+              onClick={() => {
+                setEditing(false);
+                setEditingStock(true);
+              }}
+              className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-indigo hover:bg-indigo-soft"
+            >
+              <Icon name="box" className="h-4 w-4" />
+              Stock & price
+            </button>
+            <button
+              onClick={startEditing}
+              className="flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-sm font-semibold text-madder hover:bg-madder-soft"
+            >
+              <Icon name="edit" className="h-4 w-4" />
+              Edit tags
+            </button>
+          </div>
         </div>
+      )}
+
+      {editingStock && (
+        <StockEditor
+          design={design}
+          onSaved={(updated) => {
+            onSaved(updated);
+            setEditingStock(false);
+          }}
+          onCancel={() => setEditingStock(false)}
+        />
       )}
 
       {editing && (
@@ -273,6 +300,95 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Staff update how many pieces are in stock and the rate per piece
+function StockEditor({ design, onSaved, onCancel }) {
+  const [quantity, setQuantity] = useState(String(design.quantity_available));
+  const [rate, setRate] = useState(String(design.rate));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const q = Number(quantity);
+  const r = Number(rate);
+  const valid = quantity !== "" && Number.isInteger(q) && q >= 0 && rate !== "" && r > 0;
+  const changed = q !== design.quantity_available || r !== design.rate;
+
+  async function save() {
+    setSaving(true);
+    setError("");
+    try {
+      onSaved(await saveStock(design.design_id, q, r));
+    } catch (e) {
+      setError(e.message);
+      setSaving(false);
+    }
+  }
+
+  const step = (by) => setQuantity(String(Math.max(0, (Number.isInteger(q) ? q : 0) + by)));
+
+  return (
+    <div className="space-y-3 border-t border-line/70 bg-paper/60 p-3">
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block text-sm">
+          <span className="text-muted">In stock ({design.unit}s)</span>
+          <div className="mt-1 flex items-center rounded-lg border border-line bg-card focus-within:border-indigo">
+            <button type="button" onClick={() => step(-1)} aria-label="One less" className="px-2.5 py-2 text-lg leading-none text-muted hover:text-ink">
+              −
+            </button>
+            <input
+              type="number"
+              inputMode="numeric"
+              min="0"
+              step="1"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              aria-label="Pieces in stock"
+              className="w-full min-w-0 bg-transparent py-2 text-center tabular-nums focus:outline-none"
+            />
+            <button type="button" onClick={() => step(1)} aria-label="One more" className="px-2.5 py-2 text-lg leading-none text-muted hover:text-ink">
+              +
+            </button>
+          </div>
+        </label>
+        <label className="block text-sm">
+          <span className="text-muted">Rate per {design.unit}</span>
+          <div className="mt-1 flex items-center rounded-lg border border-line bg-card px-2.5 focus-within:border-indigo">
+            <span className="text-muted">₹</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              min="1"
+              step="any"
+              value={rate}
+              onChange={(e) => setRate(e.target.value)}
+              aria-label="Rate in rupees"
+              className="w-full min-w-0 bg-transparent py-2 pl-1 tabular-nums focus:outline-none"
+            />
+          </div>
+        </label>
+      </div>
+      {!valid && <p className="text-xs text-madder">Stock must be a whole number (0 or more) and the rate more than ₹0.</p>}
+      {error && <p className="text-sm text-madder">{error}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={save}
+          disabled={saving || !valid || !changed}
+          className="flex-1 rounded-xl bg-madder py-2.5 text-sm font-semibold text-white hover:bg-madder-dark disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save stock & price"}
+        </button>
+        <button
+          onClick={onCancel}
+          disabled={saving}
+          className="flex-1 rounded-xl border border-line bg-card py-2.5 text-sm font-medium text-muted"
+        >
+          Cancel
+        </button>
+      </div>
+      <p className="text-[11px] text-faint">Saved to stock.csv as well, so a catalogue reload keeps it.</p>
     </div>
   );
 }

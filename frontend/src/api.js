@@ -153,3 +153,12 @@ export function addSampleHistory() {
 export function clearSampleHistory() {
   return request("/api/demo/history", { method: "DELETE" });
 }
+
+// Staff edit stock and rate (saved to stock.csv and the database)
+export function saveStock(designId, quantity, rate) {
+  return request(`/api/designs/${encodeURIComponent(designId)}/stock`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ quantity_available: quantity, rate }),
+  });
+}

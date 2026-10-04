@@ -28,9 +28,11 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
-  const [waiting, setWaiting] = useState(null); // simulated buyer we are waiting for
-  const waitingRef = useRef(null);
-  waitingRef.current = waiting;
+  // Simulated buyers still on their way: [{ buyer, afterId }]
+  const [pending, setPending] = useState([]);
+  const pendingRef = useRef([]);
+  pendingRef.current = pending;
+  const [fastUntil, setFastUntil] = useState(0); // keep polling fast until this time
 
   const load = useCallback(() => {
     getInbox()
@@ -38,38 +40,42 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
         setItems(data.items);
         onNewCount(data.new);
         setError("");
-        // A simulated buyer's message has arrived: open it
-        const w = waitingRef.current;
-        if (w) {
+        // Open each simulated buyer's enquiry as soon as it arrives
+        const still = [];
+        for (const w of pendingRef.current) {
           const arrived = data.items.find((i) => i.id > w.afterId && (i.buyer_name || "").startsWith(w.buyer));
-          if (arrived && !w.openedId) {
+          if (arrived) {
             setOpenId(arrived.id);
-            setWaiting({ ...w, openedId: arrived.id });
+            setFastUntil(Date.now() + 8000); // a follow-up text may still merge in
+          } else if (Date.now() - w.at < 45000) {
+            still.push(w);
           }
         }
+        if (still.length !== pendingRef.current.length) setPending(still);
       })
       .catch((e) => setError(e.message));
   }, [onNewCount]);
 
-  // Poll fast for a short while after simulating (catches photo + text merging too)
+  // Poll fast while simulated buyers are on their way, and briefly after
+  const fast = pending.length > 0 || fastUntil > Date.now();
   useEffect(() => {
-    if (!waiting) return;
-    const timer = setInterval(load, FAST_POLL_MS);
-    const stop = setTimeout(() => setWaiting(null), 30000);
-    return () => {
-      clearInterval(timer);
-      clearTimeout(stop);
-    };
-  }, [waiting?.buyer, waiting?.afterId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!fast) return;
+    const timer = setInterval(() => {
+      load();
+      if (pendingRef.current.length === 0 && Date.now() > fastUntil) setFastUntil(0);
+    }, FAST_POLL_MS);
+    return () => clearInterval(timer);
+  }, [fast, fastUntil, load]);
 
   async function simulate(scenario) {
     const afterId = Math.max(0, ...(items || []).map((i) => i.id));
-    setWaiting({ buyer: scenario.buyer, afterId, openedId: null });
+    const entry = { buyer: scenario.buyer, afterId, at: Date.now() };
+    setPending((list) => [...list.filter((w) => w.buyer !== scenario.buyer), entry]);
     try {
       await simulateBuyer(scenario.id);
     } catch (e) {
       setError(e.message);
-      setWaiting(null);
+      setPending((list) => list.filter((w) => w !== entry));
     }
   }
 
@@ -97,7 +103,7 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
             WhatsApp enquiries, already matched. Open one, check it, then reply.
           </p>
         </div>
-        {demoMode && <DemoPanel onSimulate={simulate} waiting={waiting} />}
+        {demoMode && <DemoPanel onSimulate={simulate} pending={pending} />}
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-5 py-10 text-center">
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-card text-indigo ring-1 ring-line">
@@ -300,7 +306,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
 }
 
 // Demo mode: pretend buyers message the shop, to show the WhatsApp flow live
-function DemoPanel({ onSimulate, waiting }) {
+function DemoPanel({ onSimulate, pending }) {
   const [scenarios, setScenarios] = useState([]);
   useEffect(() => {
     getDemoScenarios().then(setScenarios).catch(() => {});
@@ -320,13 +326,12 @@ function DemoPanel({ onSimulate, waiting }) {
       </div>
       <div className="mt-2.5 grid grid-cols-1 gap-2 sm:grid-cols-2">
         {scenarios.map((s) => {
-          const busy = waiting && !waiting.openedId && waiting.buyer === s.buyer;
+          const busy = pending.some((w) => w.buyer === s.buyer);
           return (
             <button
               key={s.id}
               type="button"
               onClick={() => onSimulate(s)}
-              disabled={Boolean(waiting && !waiting.openedId)}
               className="flex w-full min-w-0 items-center gap-2.5 rounded-xl bg-card p-2 text-left ring-1 ring-line transition hover:ring-indigo/50 disabled:opacity-60"
             >
               {s.photo ? (
@@ -340,7 +345,7 @@ function DemoPanel({ onSimulate, waiting }) {
                 <span className="block truncate text-[13px] font-semibold text-ink">{s.buyer}</span>
                 <span className="block truncate text-xs text-muted">
                   <span className="font-medium text-indigo">{s.language}</span> ·{" "}
-                  {busy ? "sending on WhatsApp…" : s.text || "photo"}
+                  {busy ? "message arriving…" : s.text || "photo"}
                 </span>
               </span>
             </button>

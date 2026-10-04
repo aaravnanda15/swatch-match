@@ -19,11 +19,14 @@ const MODE_TEXT = {
   vague: "Not clear yet",
 };
 
-// Ticked at the start: in-stock designs labelled Very close or Similar (up to 3)
+// Ticked at the start: in-stock designs labelled Very close or Similar (up to 3).
+// If none is that good, the closest in-stock design is ticked so a reply is ready (staff can untick).
 function defaultPicks(result) {
   if (result.clarifying_question) return [];
   const good = result.results.filter((r) => r.in_stock && ["very_close", "similar"].includes(r.label));
-  return good.slice(0, 3).map((r) => r.design_id);
+  if (good.length > 0) return good.slice(0, 3).map((r) => r.design_id);
+  const closest = result.results.find((r) => r.in_stock);
+  return closest ? [closest.design_id] : [];
 }
 
 // whatsapp (optional): { enquiryId, status, hoursLeft, buyerName, onSent } for Inbox enquiries
