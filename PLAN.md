@@ -118,4 +118,5 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
   - Fetch script now has a SKIP_TITLES list (non-fabric photos with uninformative titles) and drops Flickr ids from names.
   - CLIP zero-shot tags are rough (calls most patterns "bandhani"); prompt variants did not help. Gemini + the tag editor are the real fix.
   - Mac has Node 24 at /usr/local/bin (works); ~/.local/bin/node is a broken symlink owned by another tool, left alone.
-- Next: Step 2 (Enquiry screen).
+- Step 2 done: Enquiry screen + POST /api/enquiry (validation, saves upload, enquiries table), GET /api/settings.
+- Next: Step 3 (agent tools + orchestrator + fallback).

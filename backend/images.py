@@ -9,6 +9,9 @@ from backend.config import CONFIG
 MAX_SIDE = CONFIG["uploads"]["max_side_px"]
 MAX_BYTES = CONFIG["uploads"]["max_mb"] * 1024 * 1024
 
+# "image/jpeg" in config.yaml -> "JPEG", the name Pillow uses for the format.
+ALLOWED_FORMATS = {t.split("/")[1].upper().replace("JPG", "JPEG") for t in CONFIG["uploads"]["allowed_types"]}
+
 # Refuse absurdly large images (protects against "decompression bomb" files).
 Image.MAX_IMAGE_PIXELS = 60_000_000
 
@@ -28,6 +31,9 @@ def load_image(data: bytes) -> Image.Image:
         img.load()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError):
         raise BadImage("That file is not a photo we can read. Please send a JPG, PNG or WEBP.")
+    # Check the real format, not the file name (a renamed PDF or GIF is caught here).
+    if img.format not in ALLOWED_FORMATS:
+        raise BadImage(f"{img.format or 'This'} files are not supported. Please send a JPG, PNG or WEBP photo.")
 
     img = ImageOps.exif_transpose(img)  # phone photos are often stored sideways
     img = img.convert("RGB")

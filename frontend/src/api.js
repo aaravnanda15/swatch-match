@@ -44,3 +44,15 @@ export function saveTags(designId, tags) {
 export function imageUrl(imageFile) {
   return `/api/images/${encodeURIComponent(imageFile)}`;
 }
+
+export function getSettings() {
+  return request("/api/settings");
+}
+
+// photo is a File (or null), text is a string. Sent as a form, like a normal upload.
+export function sendEnquiry(photo, text) {
+  const form = new FormData();
+  if (photo) form.append("image", photo);
+  form.append("text", text);
+  return request("/api/enquiry", { method: "POST", body: form });
+}

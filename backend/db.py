@@ -6,6 +6,7 @@ Tables:
   tags        attribute tags per design, as JSON, plus where they came from
               ("gemini", "clip" or "manual" when staff corrected them)
   embeddings  CLIP image vector per design, stored as raw float32 bytes
+  enquiries   one row per buyer enquiry (text, saved photo, enquiry type)
   audit_log   approved replies (filled in step 6)
 """
 
@@ -38,6 +39,13 @@ CREATE TABLE IF NOT EXISTS embeddings (
     design_id  TEXT PRIMARY KEY REFERENCES designs(design_id),
     image_file TEXT NOT NULL,
     vector     BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS enquiries (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    text       TEXT,
+    image_file TEXT,
+    mode       TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS audit_log (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,3 +167,15 @@ def load_embeddings():
         return ids, np.zeros((0, 0), dtype=np.float32)
     matrix = np.vstack([np.frombuffer(r["vector"], dtype=np.float32) for r in rows])
     return ids, matrix
+
+
+# ---------- enquiries ----------
+
+def create_enquiry(text, image_file, mode):
+    """Save a new enquiry and return its id."""
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO enquiries (text, image_file, mode) VALUES (?, ?, ?)",
+            (text or None, image_file, mode),
+        )
+        return cur.lastrowid

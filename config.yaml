@@ -19,6 +19,7 @@ uploads:
   max_mb: 10                      # reject bigger files
   max_side_px: 1024               # downscale big photos before processing
   allowed_types: [image/jpeg, image/png, image/webp]
+  max_text_chars: 1000            # longest enquiry text we accept
 
 # Final score = weighted mix of three signals, each between 0 and 1.
 # Weights depend on what the buyer sent.
