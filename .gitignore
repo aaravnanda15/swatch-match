@@ -1,0 +1,20 @@
+# Secrets: never commit your real key
+.env
+
+# Local database, uploads and model cache
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend build
+node_modules/
+frontend/dist/
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

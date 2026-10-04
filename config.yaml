@@ -1,0 +1,44 @@
+# Swatch Match settings. Change values here, not in the code.
+
+paths:
+  catalogue_dir: catalogue        # design photos + stock.csv live here
+  stock_csv: catalogue/stock.csv
+  data_dir: data                  # SQLite DB, uploads and model cache (git-ignored)
+  db_file: data/swatch.db
+
+embeddings:
+  model: clip-ViT-B-32            # sentence-transformers CLIP model (image + text in one space)
+
+llm:
+  provider: gemini                # "gemini" or "none" (forces fallback mode)
+  model: gemini-2.5-flash         # change here if Google renames models
+  timeout_seconds: 20
+
+uploads:
+  max_mb: 10                      # reject bigger files
+  max_side_px: 1024               # downscale big photos before processing
+  allowed_types: [image/jpeg, image/png, image/webp]
+
+# Final score = weighted mix of three signals, each between 0 and 1.
+# Weights depend on what the buyer sent.
+scoring:
+  weights:
+    image_only:  {image: 1.0, attributes: 0.0, text: 0.0}
+    text_only:   {image: 0.0, attributes: 0.6, text: 0.4}
+    image_and_text: {image: 0.5, attributes: 0.4, text: 0.1}
+  # Labels shown on each result card. Tuned in step 4 with evaluate.py.
+  thresholds:
+    very_close: 0.80
+    similar: 0.65
+    alternative: 0.50             # below this = "No match in stock"
+  top_k: 5
+
+# Fixed attribute vocabulary. Tags, parsing and filtering all use these values.
+attributes:
+  garment_type: [saree, dupatta, lehenga, dress material, fabric, blouse piece, kurti, other]
+  main_colour: &colours [red, maroon, pink, orange, yellow, gold, green, blue, navy, purple, white, cream, black, grey, brown, silver, multicolour]
+  secondary_colour: [none, red, maroon, pink, orange, yellow, gold, green, blue, navy, purple, white, cream, black, grey, brown, silver, multicolour]
+  pattern: [plain, bandhani, leheriya, floral, paisley, geometric, checks, stripes, polka dots, ikat, patola, block print, abstract, other]
+  border: [none, zari, contrast, temple, embroidered, printed, lace, other]
+  fabric: [silk, cotton, georgette, chiffon, crepe, net, organza, linen, rayon, polyester, unknown]
+  work_type: [none, zari weave, embroidery, print, mirror work, sequins, stone work, hand painted, other]
