@@ -2,7 +2,7 @@
   // GitHub Codespaces: a free online copy of the app (see README, "Live demo").
   // First start installs everything (about 10 minutes); later starts take seconds.
   "name": "Swatch Match",
-  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "build": { "dockerfile": "Dockerfile" },
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "22" },
     // lets `gh codespace ssh` / `gh codespace logs` reach the codespace
