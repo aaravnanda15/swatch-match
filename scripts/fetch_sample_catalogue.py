@@ -60,6 +60,18 @@ SKIP_WORDS = (
     "village", "museum", "hammock", "dress", "alat tenun",
 )
 
+# Photos checked by eye that are not a single fabric (people, plants, shop
+# shelves) but whose titles give no clue. Add more here if you spot them.
+SKIP_TITLES = {
+    "File:Bandhani (15944150614).jpg",   # yarn shop
+    "File:MulberryV1.jpg",               # mulberry leaves
+    "File:500px photo (10056097).jpeg",  # street scene
+    "File:Bandhani (8357715298).jpg",    # people sitting
+    "File:Dhaka Sari Fabric 1.jpg",      # shop shelves
+    "File:Dhaka Sari Fabric 2.jpg",      # shop shelves
+    "File:MysoreSilkToday.JPG",          # group photo
+}
+
 # Only licences that allow reuse with attribution.
 OK_LICENCES = ("cc0", "public domain", "cc by", "cc-by", "pd")
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -111,6 +123,7 @@ def fetch_category(category, limit):
 def name_from_title(title):
     """'File:Red bandhani saree 2.jpg' -> 'Red Bandhani Saree 2'."""
     name = Path(title.replace("File:", "")).stem
+    name = re.sub(r"\(\d+\)", "", name)  # drop Flickr photo numbers like (8357739114)
     name = re.sub(r"[_\-]+", " ", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name[:60].title() or "Untitled design"
@@ -127,6 +140,7 @@ def download(count):
             print(f"  ! could not read category {cat}: {e}")
             continue
         items = [it for it in items if not any(w in it["title"].lower() for w in SKIP_WORDS)]
+        items = [it for it in items if it["title"] not in SKIP_TITLES]
         print(f"  {cat}: {len(items)} usable images")
         per_category.append(items)
         time.sleep(3)

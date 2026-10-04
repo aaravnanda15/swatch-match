@@ -114,4 +114,8 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - **Commit and push after every working step.**
 
 ## Status
-- Step 1 built in the cloud session and pushed. Tested there with fake photos and a stand-in for CLIP (Hugging Face is blocked in the cloud session). Waiting for a real-photo, real-model test on the Mac.
+- Step 1 done: tested on the Mac with 30 real Wikimedia photos and the real CLIP model, user OK'd.
+  - Fetch script now has a SKIP_TITLES list (non-fabric photos with uninformative titles) and drops Flickr ids from names.
+  - CLIP zero-shot tags are rough (calls most patterns "bandhani"); prompt variants did not help. Gemini + the tag editor are the real fix.
+  - Mac has Node 24 at /usr/local/bin (works); ~/.local/bin/node is a broken symlink owned by another tool, left alone.
+- Next: Step 2 (Enquiry screen).
