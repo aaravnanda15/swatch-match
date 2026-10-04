@@ -6,7 +6,9 @@ Tables:
   tags        attribute tags per design, as JSON, plus where they came from
               ("gemini", "clip" or "manual" when staff corrected them)
   embeddings  CLIP image vector per design, stored as raw float32 bytes
-  enquiries   one row per buyer enquiry (text, saved photo, enquiry type)
+  enquiries   one row per buyer enquiry (text, saved photo, enquiry type, the
+              agent's answer; WhatsApp enquiries also have the buyer and a status)
+  wa_seen     every WhatsApp message id received, so Meta's retries are ignored
   audit_log   approved replies (filled in step 6)
 """
 
@@ -48,6 +50,11 @@ CREATE TABLE IF NOT EXISTS enquiries (
     mode           TEXT NOT NULL,
     shortlist_json TEXT
 );
+CREATE TABLE IF NOT EXISTS wa_seen (
+    message_id  TEXT PRIMARY KEY,
+    phone       TEXT NOT NULL,
+    received_at INTEGER NOT NULL      -- unix seconds
+);
 CREATE TABLE IF NOT EXISTS audit_log (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
     created_at       TEXT NOT NULL DEFAULT (datetime('now')),
@@ -68,13 +75,34 @@ def connect():
     return conn
 
 
+# Columns added after the first version. Older databases get them on start-up.
+NEW_COLUMNS = {
+    "enquiries": {
+        "shortlist_json": "TEXT",
+        "answer_json": "TEXT",  # full agent answer, so the Inbox can show it again
+        "source": "TEXT NOT NULL DEFAULT 'app'",  # 'app' or 'whatsapp'
+        "buyer_phone": "TEXT",
+        "buyer_name": "TEXT",
+        "wa_message_id": "TEXT",
+        "status": "TEXT",  # WhatsApp only: 'new', 'sent' or 'dismissed'
+        "sent_at": "TEXT",
+    },
+    "audit_log": {
+        "sent_via": "TEXT NOT NULL DEFAULT 'copy'",  # 'copy' or 'whatsapp'
+        "wa_sent_ids": "TEXT",
+        "enquiry_id": "INTEGER",
+    },
+}
+
+
 def init_db():
     with connect() as conn:
         conn.executescript(SCHEMA)
-        # Databases made before step 6 lack this column; add it in place
-        columns = [r["name"] for r in conn.execute("PRAGMA table_info(enquiries)")]
-        if "shortlist_json" not in columns:
-            conn.execute("ALTER TABLE enquiries ADD COLUMN shortlist_json TEXT")
+        for table, columns in NEW_COLUMNS.items():
+            have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+            for name, kind in columns.items():
+                if name not in have:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
 
 # ---------- designs and stock ----------
@@ -176,34 +204,109 @@ def load_embeddings():
 
 # ---------- enquiries ----------
 
-def create_enquiry(text, image_file, mode, shortlist):
+def create_enquiry(text, image_file, mode, shortlist, answer=None, whatsapp=None):
     """Save a new enquiry and what the agent found. Returns its id.
-    shortlist = {"ids": [...], "no_match": bool, "query": {...}, "question": str|None}"""
+    shortlist = {"ids": [...], "no_match": bool, "query": {...}, "question": str|None}
+    whatsapp  = {"phone", "name", "message_id"} for enquiries that came in on WhatsApp"""
+    wa = whatsapp or {}
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO enquiries (text, image_file, mode, shortlist_json) VALUES (?, ?, ?, ?)",
-            (text or None, image_file, mode, json.dumps(shortlist)),
+            "INSERT INTO enquiries (text, image_file, mode, shortlist_json, answer_json, source, "
+            "buyer_phone, buyer_name, wa_message_id, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                text or None,
+                image_file,
+                mode,
+                json.dumps(shortlist),
+                json.dumps(answer) if answer is not None else None,
+                "whatsapp" if whatsapp else "app",
+                wa.get("phone"),
+                wa.get("name"),
+                wa.get("message_id"),
+                "new" if whatsapp else None,
+            ),
         )
         return cur.lastrowid
+
+
+def update_enquiry(enquiry_id, text, image_file, mode, shortlist, answer):
+    """Replace an enquiry's content (used when a buyer's photo and text arrive separately)."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE enquiries SET text = ?, image_file = ?, mode = ?, shortlist_json = ?, answer_json = ? WHERE id = ?",
+            (text or None, image_file, mode, json.dumps(shortlist), json.dumps(answer), enquiry_id),
+        )
+
+
+def _enquiry_from_row(row):
+    enquiry = dict(row)
+    enquiry["shortlist"] = json.loads(enquiry.pop("shortlist_json") or "{}")
+    enquiry["answer"] = json.loads(enquiry.pop("answer_json") or "null")
+    return enquiry
 
 
 def get_enquiry(enquiry_id):
     with connect() as conn:
         row = conn.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
-    if row is None:
-        return None
-    enquiry = dict(row)
-    enquiry["shortlist"] = json.loads(enquiry.pop("shortlist_json") or "{}")
-    return enquiry
+    return _enquiry_from_row(row) if row else None
+
+
+# ---------- WhatsApp inbox ----------
+
+def mark_seen(message_id, phone, received_at):
+    """Remember a WhatsApp message. Returns False if it was already seen (a retry)."""
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT OR IGNORE INTO wa_seen (message_id, phone, received_at) VALUES (?, ?, ?)",
+            (message_id, phone, received_at),
+        )
+        return cur.rowcount == 1
+
+
+def last_message_time(phone):
+    """Unix time of the buyer's latest message (for WhatsApp's 24-hour reply window)."""
+    with connect() as conn:
+        row = conn.execute("SELECT MAX(received_at) AS t FROM wa_seen WHERE phone = ?", (phone,)).fetchone()
+    return row["t"]
+
+
+def find_open_enquiry(phone, since_sqlite_time):
+    """The buyer's latest WhatsApp enquiry still waiting for staff, if it is recent."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM enquiries WHERE source = 'whatsapp' AND buyer_phone = ? AND status = 'new' "
+            "AND created_at >= ? ORDER BY id DESC LIMIT 1",
+            (phone, since_sqlite_time),
+        ).fetchone()
+    return _enquiry_from_row(row) if row else None
+
+
+def list_inbox(limit=100):
+    """WhatsApp enquiries, newest first, without the bulky answer."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT id, created_at, text, image_file, mode, buyer_phone, buyer_name, status, sent_at "
+            "FROM enquiries WHERE source = 'whatsapp' ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def set_status(enquiry_id, status):
+    with connect() as conn:
+        if status == "sent":
+            conn.execute("UPDATE enquiries SET status = 'sent', sent_at = datetime('now') WHERE id = ?", (enquiry_id,))
+        else:
+            conn.execute("UPDATE enquiries SET status = ? WHERE id = ?", (status, enquiry_id))
 
 
 # ---------- audit log (approved replies) ----------
 
-def add_audit(enquiry, picked_ids, reply_text, language):
+def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sent_ids=None):
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO audit_log (enquiry_text, enquiry_image, shortlist_json, picked_json, reply_text, language) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO audit_log (enquiry_text, enquiry_image, shortlist_json, picked_json, reply_text, language, "
+            "sent_via, wa_sent_ids, enquiry_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 enquiry["text"],
                 enquiry["image_file"],
@@ -211,6 +314,9 @@ def add_audit(enquiry, picked_ids, reply_text, language):
                 json.dumps(picked_ids),
                 reply_text,
                 language,
+                sent_via,
+                json.dumps(wa_sent_ids) if wa_sent_ids else None,
+                enquiry["id"],
             ),
         )
         return cur.lastrowid

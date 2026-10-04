@@ -56,3 +56,10 @@ attributes:
   border: [none, zari, contrast, temple, embroidered, printed, lace, other]
   fabric: [silk, cotton, georgette, chiffon, crepe, net, organza, linen, rayon, polyester, unknown]
   work_type: [none, zari weave, embroidery, print, mirror work, sequins, stone work, hand painted, other]
+
+# WhatsApp Business Cloud API. Keys go in .env, not here.
+whatsapp:
+  api_version: v23.0              # Meta Graph API version; update when Meta retires it
+  merge_seconds: 120              # photo and text from the same buyer this close together = one enquiry
+  max_photos: 5                   # design photos sent with a reply
+  reply_window_hours: 24          # WhatsApp only allows free replies this long after the buyer's last message

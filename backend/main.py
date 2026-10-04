@@ -1,18 +1,17 @@
 """FastAPI app. All API routes live under /api; everything else serves the built React app."""
 
 import threading
-import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import auth, db, embeddings, llm
-from backend.agent import orchestrator, templates, tools
+from backend import auth, db, embeddings, enquiries, inbox, llm, whatsapp
+from backend.agent import templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
-from backend.images import MAX_BYTES, BadImage, load_image, to_jpeg_bytes
+from backend.images import MAX_BYTES, BadImage, load_image
 from backend.tagging import clean_tags
 
 
@@ -35,6 +34,8 @@ def health():
         "llm_configured": llm.get_llm().available,
         "designs": len(db.list_designs()),
         "login_required": auth.login_required(),
+        "whatsapp_configured": whatsapp.configured(),
+        "whatsapp_dry_run": whatsapp.configured() and whatsapp.dry_run(),
     }
 
 
@@ -110,21 +111,12 @@ def enquiry(image: UploadFile | None = File(None), text: str = Form("")):
             img = load_image(data)
         except BadImage as e:
             raise HTTPException(400, str(e))
-        image_file = f"{uuid.uuid4().hex}.jpg"
-        (UPLOAD_DIR / image_file).write_bytes(to_jpeg_bytes(img))
+        image_file = enquiries.save_upload(img)
 
     if image_file is None and not text:
         raise HTTPException(400, "Add a photo or type what the buyer asked for.")
 
-    answer = orchestrator.handle_enquiry(text, img)
-    shortlist = {
-        "ids": [r["design_id"] for r in answer["results"]],
-        "no_match": answer["no_match"],
-        "query": answer["query"],
-        "question": answer["clarifying_question"],
-    }
-    answer["enquiry_id"] = db.create_enquiry(text, image_file, answer["mode"], shortlist)
-    return answer
+    return enquiries.run(text, img, image_file)
 
 
 class ReplyRequest(BaseModel):
@@ -185,6 +177,35 @@ def approve(req: ApproveRequest):
 @app.get("/api/audit")
 def audit():
     return db.list_audit()
+
+
+# ---------- WhatsApp ----------
+
+@app.get("/api/whatsapp/webhook")
+def whatsapp_verify(request: Request):
+    """Meta's one-time check when the webhook URL is saved in its dashboard."""
+    q = request.query_params
+    if q.get("hub.mode") == "subscribe" and whatsapp.verify_token_ok(q.get("hub.verify_token", "")):
+        return PlainTextResponse(q.get("hub.challenge", ""))
+    raise HTTPException(403, "Verification failed")
+
+
+@app.post("/api/whatsapp/webhook")
+async def whatsapp_receive(request: Request, background: BackgroundTasks):
+    """New WhatsApp messages. Answer Meta at once; the agent runs in the background."""
+    if not whatsapp.configured():
+        raise HTTPException(404, "WhatsApp is not set up")
+    raw = await request.body()
+    if not whatsapp.verify_signature(raw, request.headers.get("x-hub-signature-256", "")):
+        raise HTTPException(403, "Bad signature")
+    try:
+        payload = await request.json()
+    except ValueError:
+        raise HTTPException(400, "Not JSON")
+    messages = whatsapp.parse_webhook(payload)
+    if messages:
+        background.add_task(inbox.handle_messages, messages)
+    return {"ok": True}
 
 
 @app.get("/api/uploads/{image_file}")

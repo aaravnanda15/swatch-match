@@ -26,4 +26,12 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
 STAFF_PASSCODE = os.getenv("STAFF_PASSCODE", "").strip()  # empty = no login (local use)
+
+# WhatsApp Business Cloud API (all four are needed; see README "Connect WhatsApp")
+WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "").strip()
+WHATSAPP_PHONE_NUMBER_ID = os.getenv("WHATSAPP_PHONE_NUMBER_ID", "").strip()
+WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip()
+WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "").strip()
+# 1 = print messages instead of sending them (for testing without Meta)
+WHATSAPP_DRY_RUN = os.getenv("WHATSAPP_DRY_RUN", "").strip() in ("1", "true", "yes")
 ATTRIBUTES = CONFIG["attributes"]

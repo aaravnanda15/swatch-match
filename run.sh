@@ -4,6 +4,7 @@
 # on http://localhost:7860
 set -e
 cd "$(dirname "$0")"
+export PYTHONUNBUFFERED=1  # show server log lines straight away
 
 # 1. Python virtual environment + packages
 if [ ! -d .venv ]; then
