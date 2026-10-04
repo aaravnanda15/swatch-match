@@ -1,0 +1,23 @@
+{
+  // GitHub Codespaces: a free online copy of the app (see README, "Live demo").
+  // First start installs everything (about 10 minutes); later starts take seconds.
+  "name": "Swatch Match",
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" }
+  },
+  // CLIP needs more memory than the smallest machine has
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "containerEnv": {
+    "DEMO_MODE": "1",
+    "PYTHONUNBUFFERED": "1"
+  },
+  "forwardPorts": [7860],
+  "portsAttributes": {
+    "7860": { "label": "Swatch Match", "onAutoForward": "silent" }
+  },
+  // Install packages, download CLIP, load the catalogue and build the UI once
+  "postCreateCommand": "bash .devcontainer/setup.sh",
+  // Start the app every time the codespace starts (also after it wakes up)
+  "postStartCommand": "bash .devcontainer/start.sh"
+}

@@ -156,6 +156,20 @@ Things to know:
 - **WhatsApp webhooks:** the same link can serve as a temporary webhook URL for testing with Meta's test number
   (`https://<link>/api/whatsapp/webhook`). Update it in Meta whenever the link changes.
 
+### Free online copy with GitHub Codespaces
+
+For a link that works while the laptop is off, run the app in a GitHub Codespace. It's free within a personal
+account's monthly Codespaces hours, with no card. `.devcontainer/` sets everything up.
+
+1. On GitHub: **Code → Codespaces → Create codespace**. The first start takes about 10 minutes (installs, CLIP,
+   catalogue); later starts take seconds. The app starts by itself in demo mode.
+2. In the **Ports** tab, right-click port **7860 → Port visibility → Public**, then copy its address
+   (`https://<name>-7860.app.github.dev`).
+3. Optional: add `GEMINI_API_KEY` as a Codespaces secret (GitHub **Settings → Codespaces → Secrets**).
+
+The codespace stops after a period without use (set up to 4 hours in GitHub's Codespaces settings) and the link
+stops with it. Start it again from GitHub and the same link works. Data is kept between starts.
+
 ## Accuracy
 
 ```bash
