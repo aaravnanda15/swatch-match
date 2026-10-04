@@ -171,6 +171,9 @@ def handle_enquiry(text, img):
         if photo is not None:
             shade = scoring.shade_difference(photo["colour"], tools.design_colour(d["image_file"]))
         label = scoring.label_for(score)
+        # "Very close" only when everything the buyer asked for matches
+        if label == "very_close" and len(matched) < len(query["attributes"]):
+            label = "similar"
         results.append(
             {
                 "design_id": design_id,

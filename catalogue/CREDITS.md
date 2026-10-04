@@ -1,6 +1,6 @@
 # Image credits
 
-Sample images from Wikimedia Commons, resized to 640 px wide. Stock and rate values in stock.csv are made up for the demo.
+Sample images from Wikimedia Commons, resized to 640 px wide. Design names in stock.csv were written for the demo; the original titles are below. Stock and rate values in stock.csv are made up for the demo.
 
 | Design | Source | Author | Licence |
 |---|---|---|---|

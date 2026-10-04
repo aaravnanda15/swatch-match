@@ -41,11 +41,12 @@ CREATE TABLE IF NOT EXISTS embeddings (
     vector     BLOB NOT NULL
 );
 CREATE TABLE IF NOT EXISTS enquiries (
-    id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    text       TEXT,
-    image_file TEXT,
-    mode       TEXT NOT NULL
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+    text           TEXT,
+    image_file     TEXT,
+    mode           TEXT NOT NULL,
+    shortlist_json TEXT
 );
 CREATE TABLE IF NOT EXISTS audit_log (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +71,10 @@ def connect():
 def init_db():
     with connect() as conn:
         conn.executescript(SCHEMA)
+        # Databases made before step 6 lack this column; add it in place
+        columns = [r["name"] for r in conn.execute("PRAGMA table_info(enquiries)")]
+        if "shortlist_json" not in columns:
+            conn.execute("ALTER TABLE enquiries ADD COLUMN shortlist_json TEXT")
 
 
 # ---------- designs and stock ----------
@@ -171,11 +176,54 @@ def load_embeddings():
 
 # ---------- enquiries ----------
 
-def create_enquiry(text, image_file, mode):
-    """Save a new enquiry and return its id."""
+def create_enquiry(text, image_file, mode, shortlist):
+    """Save a new enquiry and what the agent found. Returns its id.
+    shortlist = {"ids": [...], "no_match": bool, "query": {...}, "question": str|None}"""
     with connect() as conn:
         cur = conn.execute(
-            "INSERT INTO enquiries (text, image_file, mode) VALUES (?, ?, ?)",
-            (text or None, image_file, mode),
+            "INSERT INTO enquiries (text, image_file, mode, shortlist_json) VALUES (?, ?, ?, ?)",
+            (text or None, image_file, mode, json.dumps(shortlist)),
         )
         return cur.lastrowid
+
+
+def get_enquiry(enquiry_id):
+    with connect() as conn:
+        row = conn.execute("SELECT * FROM enquiries WHERE id = ?", (enquiry_id,)).fetchone()
+    if row is None:
+        return None
+    enquiry = dict(row)
+    enquiry["shortlist"] = json.loads(enquiry.pop("shortlist_json") or "{}")
+    return enquiry
+
+
+# ---------- audit log (approved replies) ----------
+
+def add_audit(enquiry, picked_ids, reply_text, language):
+    with connect() as conn:
+        cur = conn.execute(
+            "INSERT INTO audit_log (enquiry_text, enquiry_image, shortlist_json, picked_json, reply_text, language) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                enquiry["text"],
+                enquiry["image_file"],
+                json.dumps(enquiry["shortlist"].get("ids", [])),
+                json.dumps(picked_ids),
+                reply_text,
+                language,
+            ),
+        )
+        return cur.lastrowid
+
+
+def list_audit(limit=200):
+    """Newest first."""
+    with connect() as conn:
+        rows = conn.execute("SELECT * FROM audit_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    entries = []
+    for row in rows:
+        entry = dict(row)
+        entry["shortlist"] = json.loads(entry.pop("shortlist_json") or "[]")
+        entry["picked"] = json.loads(entry.pop("picked_json") or "[]")
+        entries.append(entry)
+    return entries

@@ -5,6 +5,7 @@ import ClarifyCard from "../components/ClarifyCard.jsx";
 import FallbackBanner from "../components/FallbackBanner.jsx";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
+import ReplyBox from "../components/ReplyBox.jsx";
 import ResultCard from "../components/ResultCard.jsx";
 
 // Used until /api/settings answers (same values as config.yaml)
@@ -259,7 +260,7 @@ export default function EnquiryPage() {
         {sending ? (
           <LoadingCards />
         ) : result ? (
-          <Shortlist result={result} onOpenImage={setViewing} />
+          <Shortlist key={result.enquiry_id} result={result} onOpenImage={setViewing} />
         ) : (
           <EmptyState />
         )}
@@ -270,7 +271,22 @@ export default function EnquiryPage() {
   );
 }
 
+// Ticked at the start: in-stock designs labelled Very close or Similar (up to 3)
+function defaultPicks(result) {
+  if (result.clarifying_question) return [];
+  const good = result.results.filter((r) => r.in_stock && ["very_close", "similar"].includes(r.label));
+  return good.slice(0, 3).map((r) => r.design_id);
+}
+
 function Shortlist({ result, onOpenImage }) {
+  const [picked, setPicked] = useState(() => defaultPicks(result));
+
+  function togglePick(designId) {
+    setPicked((list) => (list.includes(designId) ? list.filter((d) => d !== designId) : [...list, designId]));
+  }
+  // Keep the reply in shortlist order, whatever order things were ticked
+  const pickedInOrder = result.results.map((r) => r.design_id).filter((d) => picked.includes(d));
+
   const understood = Object.values(result.query.attributes);
   if (result.query.max_rate) understood.push(`up to ${rupees(result.query.max_rate)}`);
   if (result.query.min_quantity) understood.push(`${result.query.min_quantity} pcs`);
@@ -297,7 +313,13 @@ function Shortlist({ result, onOpenImage }) {
 
       {result.fallback_mode && <FallbackBanner reason={result.fallback_reason} />}
 
-      {result.clarifying_question && <ClarifyCard question={result.clarifying_question} />}
+      {result.clarifying_question && (
+        <ClarifyCard
+          question={result.clarifying_question}
+          enquiryId={result.enquiry_id}
+          language={result.query.language}
+        />
+      )}
 
       {result.no_match && !result.clarifying_question && result.results.length > 0 && (
         <div className="flex gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-sm">
@@ -323,6 +345,8 @@ function Shortlist({ result, onOpenImage }) {
               result={r}
               rank={i + 1}
               onOpenImage={onOpenImage}
+              picked={picked.includes(r.design_id)}
+              onTogglePick={togglePick}
               style={{ animationDelay: `${i * 50}ms` }}
             />
           ))}
@@ -334,6 +358,10 @@ function Shortlist({ result, onOpenImage }) {
           {result.over_budget_removed} closer designs were hidden because they cost more than{" "}
           {rupees(result.query.max_rate)}.
         </p>
+      )}
+
+      {result.results.length > 0 && !result.clarifying_question && (
+        <ReplyBox enquiryId={result.enquiry_id} picked={pickedInOrder} defaultLanguage={result.query.language} />
       )}
     </div>
   );

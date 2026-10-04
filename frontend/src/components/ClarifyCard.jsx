@@ -1,15 +1,22 @@
 import { useState } from "react";
+import { approveReply } from "../api.js";
 import { copyText } from "../clipboard.js";
 import Icon from "./Icon.jsx";
 
 // Shown when the enquiry is too vague: one question to send back to the buyer.
-export default function ClarifyCard({ question }) {
-  const [copied, setCopied] = useState(false);
+export default function ClarifyCard({ question, enquiryId, language }) {
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState("");
 
-  async function copy() {
-    if (await copyText(question)) {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  // Logged like any approved reply, then copied for pasting into WhatsApp
+  async function approve() {
+    setError("");
+    try {
+      await approveReply(enquiryId, [], question, language);
+      await copyText(question);
+      setDone(true);
+    } catch (e) {
+      setError(e.message);
     }
   }
 
@@ -27,13 +34,14 @@ export default function ClarifyCard({ question }) {
         <p className="text-xs text-muted">The designs below are only a best guess.</p>
         <button
           type="button"
-          onClick={copy}
+          onClick={approve}
           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo/90"
         >
-          <Icon name={copied ? "check" : "copy"} className="h-4 w-4" />
-          {copied ? "Copied" : "Copy question"}
+          <Icon name={done ? "check" : "copy"} className="h-4 w-4" />
+          {done ? "Copied & logged" : "Approve & copy"}
         </button>
       </div>
+      {error && <p className="mt-2 text-sm text-madder">{error}</p>}
     </div>
   );
 }

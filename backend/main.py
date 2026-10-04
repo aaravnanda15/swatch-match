@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from backend import db, embeddings, llm
-from backend.agent import orchestrator
+from backend.agent import orchestrator, templates, tools
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, to_jpeg_bytes
 from backend.tagging import clean_tags
@@ -88,8 +89,83 @@ def enquiry(image: UploadFile | None = File(None), text: str = Form("")):
         raise HTTPException(400, "Add a photo or type what the buyer asked for.")
 
     answer = orchestrator.handle_enquiry(text, img)
-    answer["enquiry_id"] = db.create_enquiry(text, image_file, answer["mode"])
+    shortlist = {
+        "ids": [r["design_id"] for r in answer["results"]],
+        "no_match": answer["no_match"],
+        "query": answer["query"],
+        "question": answer["clarifying_question"],
+    }
+    answer["enquiry_id"] = db.create_enquiry(text, image_file, answer["mode"], shortlist)
     return answer
+
+
+class ReplyRequest(BaseModel):
+    enquiry_id: int
+    picked: list[str]
+    language: str = "en"
+
+
+class ApproveRequest(BaseModel):
+    enquiry_id: int
+    picked: list[str] = []
+    text: str
+    language: str = "en"
+
+
+def _enquiry_and_picks(enquiry_id, picked):
+    """The stored enquiry, after checking every picked design was on its shortlist."""
+    enquiry = db.get_enquiry(enquiry_id)
+    if enquiry is None:
+        raise HTTPException(404, "Enquiry not found")
+    allowed = set(enquiry["shortlist"].get("ids", []))
+    if not set(picked) <= allowed:
+        raise HTTPException(400, "Pick designs from this enquiry's shortlist.")
+    return enquiry
+
+
+@app.post("/api/reply")
+def reply(req: ReplyRequest):
+    """Draft reply for the picked designs. Numbers come from stock.csv via the database."""
+    if not req.picked:
+        raise HTTPException(400, "Pick at least one design for the reply.")
+    if req.language not in templates.LANGUAGES:
+        raise HTTPException(400, "Unknown language.")
+    enquiry = _enquiry_and_picks(req.enquiry_id, req.picked)
+    shortlist = enquiry["shortlist"]
+    text = tools.draft_reply(
+        req.picked,
+        req.language,
+        no_match=shortlist.get("no_match", False),
+        min_quantity=(shortlist.get("query") or {}).get("min_quantity"),
+    )
+    return {"text": text, "language": req.language}
+
+
+@app.post("/api/approve")
+def approve(req: ApproveRequest):
+    """Staff approved the (possibly edited) reply: record it. Nothing is sent to the buyer."""
+    text = req.text.strip()
+    if not text:
+        raise HTTPException(400, "The reply is empty.")
+    if len(text) > 4000:
+        raise HTTPException(400, "The reply is too long (over 4000 characters).")
+    enquiry = _enquiry_and_picks(req.enquiry_id, req.picked)
+    audit_id = db.add_audit(enquiry, req.picked, text, req.language)
+    return {"audit_id": audit_id}
+
+
+@app.get("/api/audit")
+def audit():
+    return db.list_audit()
+
+
+@app.get("/api/uploads/{image_file}")
+def upload(image_file: str):
+    """Buyer photos saved with each enquiry (shown in the audit log)."""
+    path = (UPLOAD_DIR / image_file).resolve()
+    if path.parent != UPLOAD_DIR.resolve() or not path.is_file():
+        raise HTTPException(404, "Image not found")
+    return FileResponse(path)
 
 
 @app.get("/api/images/{image_file}")

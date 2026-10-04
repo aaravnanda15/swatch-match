@@ -1,7 +1,6 @@
 """The agent's tools. Each one does a single job and returns plain data.
 The orchestrator decides which to call and logs every call to the trace.
 
-The draft reply tool is added in step 6.
 """
 
 import numpy as np
@@ -105,6 +104,14 @@ def ask_clarifying_question(text, query):
         "source": "template",
         "llm_failed": provider.available,
     }
+
+
+def draft_reply(design_ids, language, no_match=False, min_quantity=None):
+    """Reply text for the designs staff picked. Stock and rate are read again
+    from the database right now, and written into the text by a template."""
+    designs = [db.get_design(d) for d in design_ids]
+    designs = [d for d in designs if d is not None]
+    return templates.draft_reply(language, designs, no_match=no_match, min_quantity=min_quantity)
 
 
 def _positive_number(value):

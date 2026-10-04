@@ -56,3 +56,28 @@ export function sendEnquiry(photo, text) {
   form.append("text", text);
   return request("/api/enquiry", { method: "POST", body: form });
 }
+
+export function draftReply(enquiryId, picked, language) {
+  return request("/api/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enquiry_id: enquiryId, picked, language }),
+  });
+}
+
+// Records the approved reply in the audit log. Nothing is sent to the buyer.
+export function approveReply(enquiryId, picked, text, language) {
+  return request("/api/approve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language }),
+  });
+}
+
+export function getAudit() {
+  return request("/api/audit");
+}
+
+export function uploadUrl(imageFile) {
+  return `/api/uploads/${encodeURIComponent(imageFile)}`;
+}
