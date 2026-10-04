@@ -124,3 +124,4 @@ Cloud container already has git 2.43, Python 3.11, Node 22, 4 CPUs, 15 GB RAM. I
 - Step 4 done: labels, computed reasons, shade note, no-match; curated catalogue/tags.csv; evaluate.py 29/32 top-1, 31/32 top-5 (fallback mode); new visual design (paper/indigo/madder, Fraunces + Inter).
 - Step 5 done: one clarifying question (Gemini or 4-language template), Hinglish detection.
 - Step 6 done: tick designs, template reply in en/hi/hinglish/gu (numbers from DB), edit, Approve & copy -> audit_log. Sample designs renamed in stock.csv.
+- Step 7 done: trace panel (timeline of tool calls, timings, score mix).

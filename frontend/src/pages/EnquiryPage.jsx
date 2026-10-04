@@ -7,6 +7,7 @@ import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import ReplyBox from "../components/ReplyBox.jsx";
 import ResultCard from "../components/ResultCard.jsx";
+import TracePanel from "../components/TracePanel.jsx";
 
 // Used until /api/settings answers (same values as config.yaml)
 const DEFAULT_SETTINGS = {
@@ -363,6 +364,8 @@ function Shortlist({ result, onOpenImage }) {
       {result.results.length > 0 && !result.clarifying_question && (
         <ReplyBox enquiryId={result.enquiry_id} picked={pickedInOrder} defaultLanguage={result.query.language} />
       )}
+
+      <TracePanel trace={result.trace} weights={result.weights} />
     </div>
   );
 }
