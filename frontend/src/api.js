@@ -119,3 +119,23 @@ export function sendWhatsApp(enquiryId, picked, text, language) {
     body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language }),
   });
 }
+
+export function getSamplePhotos() {
+  return request("/api/demo/photos");
+}
+
+export function samplePhotoUrl(name) {
+  return `/api/demo/photos/${encodeURIComponent(name)}`;
+}
+
+export function getDemoScenarios() {
+  return request("/api/demo/scenarios");
+}
+
+export function simulateBuyer(scenarioId) {
+  return request("/api/demo/simulate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario_id: scenarioId }),
+  });
+}

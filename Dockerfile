@@ -13,8 +13,9 @@ RUN npm run build
 # ---------- 2. The Python app ----------
 FROM python:3.11-slim
 
-# Hugging Face Spaces runs the container as user 1000
-RUN useradd -m -u 1000 user
+# Hugging Face Spaces runs the container as user 1000; it must own /app
+# because the app creates data/ (database, model cache, uploads) there
+RUN useradd -m -u 1000 user && mkdir /app && chown user:user /app
 WORKDIR /app
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \

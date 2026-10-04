@@ -9,9 +9,9 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from backend import auth, db, embeddings, enquiries, inbox, llm, whatsapp
+from backend import auth, db, demo, embeddings, enquiries, inbox, llm, whatsapp
 from backend.agent import templates, tools
-from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, FRONTEND_DIST, UPLOAD_DIR
+from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG, DEMO_MODE, FRONTEND_DIST, UPLOAD_DIR
 from backend.images import MAX_BYTES, BadImage, load_image, load_image_file, to_jpeg_bytes
 from backend.tagging import clean_tags
 
@@ -35,8 +35,9 @@ def health():
         "llm_configured": llm.get_llm().available,
         "designs": len(db.list_designs()),
         "login_required": auth.login_required(),
-        "whatsapp_configured": whatsapp.configured(),
-        "whatsapp_dry_run": whatsapp.configured() and whatsapp.dry_run(),
+        "whatsapp_configured": whatsapp.enabled(),
+        "whatsapp_dry_run": whatsapp.enabled() and whatsapp.dry_run(),
+        "demo_mode": DEMO_MODE,
     }
 
 
@@ -279,7 +280,7 @@ _send_lock = threading.Lock()  # two quick taps must not send twice
 @app.post("/api/whatsapp/send")
 def whatsapp_send(req: SendRequest):
     """Staff approved the reply: send the text, then a photo of each picked design."""
-    if not whatsapp.configured():
+    if not whatsapp.enabled():
         raise HTTPException(404, "WhatsApp is not set up")
     text = req.text.strip()
     if not text:
@@ -326,6 +327,42 @@ def whatsapp_send(req: SendRequest):
         "failed_photos": failed,
         "dry_run": whatsapp.dry_run(),
     }
+
+
+# ---------- Demo helpers ----------
+
+@app.get("/api/demo/photos")
+def demo_photos():
+    """Sample buyer photos for one-tap examples on the Enquiry screen."""
+    return demo.sample_photos()
+
+
+@app.get("/api/demo/photos/{name}")
+def demo_photo(name: str):
+    if name not in demo.sample_photos():
+        raise HTTPException(404, "Not found")
+    return FileResponse(demo.SAMPLE_PHOTO_DIR / name)
+
+
+@app.get("/api/demo/scenarios")
+def demo_scenarios():
+    if not DEMO_MODE:
+        raise HTTPException(404, "Demo mode is off")
+    return demo.public_scenarios()
+
+
+class SimulateRequest(BaseModel):
+    scenario_id: str
+
+
+@app.post("/api/demo/simulate")
+def demo_simulate(req: SimulateRequest):
+    """A pretend WhatsApp buyer messages the shop (demo mode only)."""
+    if not DEMO_MODE:
+        raise HTTPException(404, "Demo mode is off")
+    if not demo.simulate(req.scenario_id):
+        raise HTTPException(404, "Unknown scenario")
+    return {"ok": True}
 
 
 @app.get("/api/uploads/{image_file}")

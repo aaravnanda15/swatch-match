@@ -34,4 +34,8 @@ WHATSAPP_VERIFY_TOKEN = os.getenv("WHATSAPP_VERIFY_TOKEN", "").strip()
 WHATSAPP_APP_SECRET = os.getenv("WHATSAPP_APP_SECRET", "").strip()
 # 1 = print messages instead of sending them (for testing without Meta)
 WHATSAPP_DRY_RUN = os.getenv("WHATSAPP_DRY_RUN", "").strip() in ("1", "true", "yes")
+
+# 1 = demo mode for presentations: the Inbox works without Meta (simulated
+# buyers, replies never really sent) and sample data buttons are shown
+DEMO_MODE = os.getenv("DEMO_MODE", "").strip() in ("1", "true", "yes")
 ATTRIBUTES = CONFIG["attributes"]

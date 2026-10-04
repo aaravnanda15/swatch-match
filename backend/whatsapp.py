@@ -19,6 +19,7 @@ import requests
 from backend.config import (
     CONFIG,
     ROOT,
+    DEMO_MODE,
     WHATSAPP_APP_SECRET,
     WHATSAPP_DRY_RUN,
     WHATSAPP_PHONE_NUMBER_ID,
@@ -35,12 +36,18 @@ class WhatsAppError(Exception):
 
 
 def configured():
-    """True when all four settings are present (the Inbox tab is shown)."""
+    """True when all four Meta settings are present (real webhook can be used)."""
     return all([WHATSAPP_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_VERIFY_TOKEN, WHATSAPP_APP_SECRET])
 
 
+def enabled():
+    """The Inbox is shown: real WhatsApp is set up, or demo mode is on."""
+    return configured() or DEMO_MODE
+
+
 def dry_run():
-    return WHATSAPP_DRY_RUN
+    """Print instead of sending: asked for, or demo mode without real WhatsApp."""
+    return WHATSAPP_DRY_RUN or not configured()
 
 
 def verify_token_ok(token):

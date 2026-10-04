@@ -88,7 +88,7 @@ export default function App() {
       <main className="mx-auto max-w-5xl px-4 pt-5 pb-28 md:pb-12">
         {whatsapp && (
           <div hidden={tab !== "inbox"}>
-            <InboxPage active={tab === "inbox"} onNewCount={onNewCount} />
+            <InboxPage active={tab === "inbox"} onNewCount={onNewCount} demoMode={Boolean(health?.demo_mode)} />
           </div>
         )}
         <div hidden={tab !== "enquiry"}>

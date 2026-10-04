@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getSettings, sendEnquiry } from "../api.js";
+import { getSamplePhotos, getSettings, samplePhotoUrl, sendEnquiry } from "../api.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import Shortlist from "../components/Shortlist.jsx";
@@ -178,6 +178,7 @@ export default function EnquiryPage() {
               </span>
             </button>
           )}
+          {!preview && <SamplePhotos onPick={acceptPhoto} />}
           <input
             ref={fileInput}
             type="file"
@@ -256,6 +257,43 @@ export default function EnquiryPage() {
       </section>
 
       <ImageViewer design={viewing} onClose={() => setViewing(null)} />
+    </div>
+  );
+}
+
+// One-tap example buyer photos, so anyone can try the app without files
+const FEATURED = ["q_D010_text.jpg", "q_D012.jpg", "q_D007.jpg", "q_D016.jpg", "q_D023.jpg", "q_D020.jpg"];
+
+function SamplePhotos({ onPick }) {
+  const [names, setNames] = useState([]);
+  useEffect(() => {
+    getSamplePhotos()
+      .then((all) => setNames(FEATURED.filter((n) => all.includes(n))))
+      .catch(() => {});
+  }, []);
+  if (names.length === 0) return null;
+
+  async function pick(name) {
+    const blob = await (await fetch(samplePhotoUrl(name))).blob();
+    onPick(new File([blob], `sample-${name}`, { type: "image/jpeg" }));
+  }
+
+  return (
+    <div className="mt-3">
+      <p className="mb-1.5 text-xs text-muted">Or try a sample buyer photo:</p>
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {names.map((n) => (
+          <button
+            key={n}
+            type="button"
+            onClick={() => pick(n)}
+            className="h-14 w-14 shrink-0 overflow-hidden rounded-lg ring-1 ring-line transition hover:ring-2 hover:ring-indigo"
+            aria-label="Use this sample photo"
+          >
+            <img src={samplePhotoUrl(n)} alt="" className="h-full w-full object-cover" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
-import { dismissInboxItem, getInbox, getInboxItem, uploadUrl } from "../api.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  dismissInboxItem,
+  getDemoScenarios,
+  getInbox,
+  getInboxItem,
+  samplePhotoUrl,
+  simulateBuyer,
+  uploadUrl,
+} from "../api.js";
 import { shortDateTime } from "../format.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import Shortlist from "../components/Shortlist.jsx";
 
 const POLL_MS = 10000; // check for new WhatsApp enquiries every 10 seconds
+const FAST_POLL_MS = 1500; // right after a simulated message, check often
 
 const STATUS = {
   new: { text: "New", style: "bg-madder text-white" },
@@ -15,10 +24,13 @@ const STATUS = {
 
 // WhatsApp enquiries, already run through the agent. Staff open one, check the
 // shortlist and reply. Polls in the background so the tab badge stays current.
-export default function InboxPage({ active, onNewCount }) {
+export default function InboxPage({ active, onNewCount, demoMode }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
+  const [waiting, setWaiting] = useState(null); // simulated buyer we are waiting for
+  const waitingRef = useRef(null);
+  waitingRef.current = waiting;
 
   const load = useCallback(() => {
     getInbox()
@@ -26,9 +38,40 @@ export default function InboxPage({ active, onNewCount }) {
         setItems(data.items);
         onNewCount(data.new);
         setError("");
+        // A simulated buyer's message has arrived: open it
+        const w = waitingRef.current;
+        if (w) {
+          const arrived = data.items.find((i) => i.id > w.afterId && (i.buyer_name || "").startsWith(w.buyer));
+          if (arrived && !w.openedId) {
+            setOpenId(arrived.id);
+            setWaiting({ ...w, openedId: arrived.id });
+          }
+        }
       })
       .catch((e) => setError(e.message));
   }, [onNewCount]);
+
+  // Poll fast for a short while after simulating (catches photo + text merging too)
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(load, FAST_POLL_MS);
+    const stop = setTimeout(() => setWaiting(null), 30000);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(stop);
+    };
+  }, [waiting?.buyer, waiting?.afterId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function simulate(scenario) {
+    const afterId = Math.max(0, ...(items || []).map((i) => i.id));
+    setWaiting({ buyer: scenario.buyer, afterId, openedId: null });
+    try {
+      await simulateBuyer(scenario.id);
+    } catch (e) {
+      setError(e.message);
+      setWaiting(null);
+    }
+  }
 
   useEffect(() => {
     load();
@@ -54,13 +97,18 @@ export default function InboxPage({ active, onNewCount }) {
             WhatsApp enquiries, already matched. Open one, check it, then reply.
           </p>
         </div>
+        {demoMode && <DemoPanel onSimulate={simulate} waiting={waiting} />}
         {items.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-line px-5 py-10 text-center">
             <span className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-card text-indigo ring-1 ring-line">
               <Icon name="inbox" />
             </span>
             <p className="mt-3 text-sm font-semibold text-ink">No WhatsApp enquiries yet</p>
-            <p className="mt-1 text-sm text-muted">When a buyer messages your WhatsApp number, it appears here.</p>
+            <p className="mt-1 text-sm text-muted">
+              {demoMode
+                ? "Tap a buyer above to simulate their WhatsApp message."
+                : "When a buyer messages your WhatsApp number, it appears here."}
+            </p>
           </div>
         ) : (
           <ul className="divide-y divide-line/70 overflow-hidden rounded-2xl border border-line bg-card">
@@ -76,6 +124,10 @@ export default function InboxPage({ active, onNewCount }) {
           <InboxDetail
             key={openId}
             id={openId}
+            signature={(() => {
+              const it = items.find((i) => i.id === openId);
+              return it ? `${it.mode}|${it.text}|${it.status}` : "";
+            })()}
             onBack={() => setOpenId(null)}
             onChanged={load}
           />
@@ -130,7 +182,7 @@ function InboxRow({ item, selected, onOpen }) {
   );
 }
 
-function InboxDetail({ id, onBack, onChanged }) {
+function InboxDetail({ id, signature, onBack, onChanged }) {
   const [item, setItem] = useState(null);
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState(null);
@@ -141,7 +193,8 @@ function InboxDetail({ id, onBack, onChanged }) {
       .catch((e) => setError(e.message));
   }, [id]);
 
-  useEffect(load, [load]);
+  // Reload when the list shows this enquiry changed (e.g. a follow-up text merged in)
+  useEffect(load, [load, signature]);
 
   async function dismiss() {
     try {
@@ -221,6 +274,7 @@ function InboxDetail({ id, onBack, onChanged }) {
 
       {item.answer ? (
         <Shortlist
+          key={`${item.mode}|${item.text}`}
           result={item.answer}
           onOpenImage={setViewing}
           whatsapp={{
@@ -242,5 +296,57 @@ function InboxDetail({ id, onBack, onChanged }) {
 
       <ImageViewer design={viewing} onClose={() => setViewing(null)} />
     </div>
+  );
+}
+
+// Demo mode: pretend buyers message the shop, to show the WhatsApp flow live
+function DemoPanel({ onSimulate, waiting }) {
+  const [scenarios, setScenarios] = useState([]);
+  useEffect(() => {
+    getDemoScenarios().then(setScenarios).catch(() => {});
+  }, []);
+  if (scenarios.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl border border-indigo/25 bg-indigo-soft/50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="flex items-center gap-1.5 text-sm font-semibold text-indigo">
+          <Icon name="sparkle" className="h-4 w-4" />
+          Simulate a WhatsApp buyer
+        </p>
+        <span className="rounded-full bg-card px-2 py-0.5 text-[10px] font-semibold text-indigo ring-1 ring-indigo/20">
+          Demo · nothing is really sent
+        </span>
+      </div>
+      <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
+        {scenarios.map((s) => {
+          const busy = waiting && !waiting.openedId && waiting.buyer === s.buyer;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => onSimulate(s)}
+              disabled={Boolean(waiting && !waiting.openedId)}
+              className="flex items-center gap-2.5 rounded-xl bg-card p-2 text-left ring-1 ring-line transition hover:ring-indigo/50 disabled:opacity-60"
+            >
+              {s.photo ? (
+                <img src={samplePhotoUrl(s.photo)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+              ) : (
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-soft font-display font-semibold text-indigo">
+                  {s.buyer[0]}
+                </span>
+              )}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[13px] font-semibold text-ink">{s.buyer}</span>
+                <span className="block truncate text-xs text-muted">
+                  <span className="font-medium text-indigo">{s.language}</span> ·{" "}
+                  {busy ? "sending on WhatsApp…" : s.text || "photo"}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
