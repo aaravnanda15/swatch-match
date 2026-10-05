@@ -12,13 +12,13 @@ log = logging.getLogger("swatch.inbox")
 MAX_TEXT = CONFIG["uploads"]["max_text_chars"]
 
 # One message at a time, so a photo and the text right after it cannot race
-_lock = threading.Lock()
+lock = threading.Lock()
 
 
 def handle_messages(messages):
     for message in messages:
         try:
-            with _lock:
+            with lock:
                 result = handle_message(message)
             log.info("%s from %s: %s", message["type"], mask(message["phone"]), result)
         except Exception:  # never let one bad message stop the others

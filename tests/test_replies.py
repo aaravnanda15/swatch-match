@@ -10,7 +10,7 @@ import string
 import pytest
 from helpers import Chat, FakeLLM
 
-from backend import db, llm
+from backend import conversation, db, llm
 from backend.agent import templates
 from backend.agent.reply_guard import validate_reply
 from backend.config import CONFIG
@@ -156,3 +156,37 @@ def test_a_formal_buyer_gets_no_emoji():
         state = Chat(name="Buyer").say("Dear sir, kindly share red saree rates")
     assert state["tone"] == "formal" and "🙏" not in state["last_reply"]
     assert state["last_reply"].startswith("Namaste. ")
+
+
+def test_a_returning_buyer_is_welcomed_with_their_last_design():
+    with llm.offline():
+        chat = Chat(name="Ramesh Textiles")
+        chat.say("red saree?")
+        chat.say("5")
+        done = chat.say("yes")  # order confirmed
+        assert done["stage"] == "done"
+        state = chat.say("hi")
+        assert done["focus"] in state["last_reply"] and "Ramesh ji" in state["last_reply"]
+        with db.connect() as conn:  # a new chat, months later
+            conn.execute("DELETE FROM conversations WHERE phone = ?", (chat.phone,))
+        state = chat.say("blue dupatta")
+        assert db.last_design(chat.phone) and "Last time" in state["last_reply"]
+
+
+def test_back_in_stock_drafts_a_message_for_staff():
+    with llm.offline():
+        chat = Chat(name="Anita")
+        first = chat.say("red saree?")
+        waiting = first["waiting_for"]
+        assert waiting, "the best red saree should be out of stock in the sample catalogue"
+        design_id = waiting[0]
+        db.set_status(first["enquiry_id"], "sent")
+        db.update_stock(design_id, 6, db.get_design(design_id)["rate"])
+        try:
+            assert conversation.back_in_stock(design_id) >= 1  # every buyer who wanted it
+        finally:
+            db.update_stock(design_id, 0, db.get_design(design_id)["rate"])
+        state = chat.state()
+        assert state["outbox"]["intent"] == "back_in_stock" and design_id in state["outbox"]["text"]
+        assert "6" in state["outbox"]["text"] and state["pending_question"]["expects"] == "quantity"
+        assert db.get_enquiry(first["enquiry_id"])["status"] == "new" and not state["waiting_for"]

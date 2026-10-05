@@ -97,6 +97,7 @@ def new_state():
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
         "last_buyer_text": "", "filtered_count": 0, "action": None, "reply_source": None, "needs_staff": False,
         "memory": [], "rejected": [], "shown": [], "occasion": None, "name": None, "tone": None, "chosen": None,
+        "waiting_for": [],
     }
 
 
@@ -275,6 +276,12 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     state["needs_staff"] = False
     if name:
         state["name"] = templates.first_name(name)
+    # a returning buyer: their last design, for "welcome back" (from the database, not the AI)
+    returning = None
+    if state["stage"] == "done":
+        returning = state["focus"]
+    elif state["turns"] == 1:
+        returning = db.last_design(phone)
     history = db.recent_chat(phone, HISTORY + 1)[:-1]  # the newest message is already stored
 
     normalized = " ".join(text.lower().split())
@@ -302,7 +309,7 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     # filtered: nothing worth the seller's time (no reply, not shown as New).
     priority = "needs_reply"
     if intent == "new_or_changed_request":
-        reply = _new_request(state, phone, text, img, image_file, buyer, fields)
+        reply = _new_request(state, phone, text, img, image_file, buyer, fields, returning)
     elif intent == "answer_to_question":
         reply = _answer(state, fields)
     elif intent == "question_about_shown_designs":
@@ -312,7 +319,7 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     elif intent == "wants_other_designs":
         reply = _show_other(state)
     elif intent == "greeting":
-        reply = _greet(state)
+        reply = _greet(state, returning)
         priority = "low"
     else:
         reply, priority = _off_topic(state, fields.get("filter"))
@@ -463,7 +470,7 @@ def _note_in_trace(state, intent, source, result, started):
     db.save_answer(state["enquiry_id"], answer)
 
 
-def _new_request(state, phone, text, img, image_file, buyer, fields):
+def _new_request(state, phone, text, img, image_file, buyer, fields, returning=None):
     for attr, value in (fields.get("attributes") or {}).items():
         state["enquiry"][attr] = value
     if fields.get("budget"):
@@ -481,6 +488,9 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     adopt_answer(state, answer)
     lang = state["language"]
     picks = _good_picks(answer, state["rejected"])
+    best = answer["results"][0] if answer["results"] else None
+    if best and not best["in_stock"] and best["label"] in ("very_close", "similar"):
+        _wait_for(state, best["design_id"])  # their best match is out of stock: tell them when it's back
 
     if answer["clarifying_question"]:
         state["pending_question"] = {"text": answer["clarifying_question"], "expects": "details"}
@@ -496,10 +506,12 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     state["quantity"] = state["unit"] = None
     state["reply_picks"] = state["shown"] = picks
     state["action"] = "show_closest_designs" if answer["no_match"] else "show_matching_designs"
+    welcome = _welcome(state, returning)
     text = templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"],
                                  buyer=templates.address(lang, state["name"]),
-                                 occasion=templates.occasion_words(lang, state["occasion"]), greet=state["turns"] == 1)
-    return _toned(state, text)
+                                 occasion=templates.occasion_words(lang, state["occasion"]),
+                                 greet=state["turns"] == 1 and not welcome)
+    return _toned(state, _join(welcome, text))
 
 
 def _set_outbox(state, reply, intent, source=None):
@@ -650,6 +662,7 @@ def _stock_check(state, n):
     state["quantity"], state["unit"] = n, design["unit"]
     state["stage"] = "confirming"
     if available <= 0:
+        _wait_for(state, design["design_id"])
         text = _ask(state, "out", "take_available", short_key="similar_short", **values)
         state["action"] = "stock_check_out_of_stock"
     elif n > available:
@@ -766,10 +779,52 @@ def _toned(state, text):
     return templates.no_emoji(text) if state["tone"] == "formal" else text
 
 
-def _greet(state):
+def _greet(state, returning=None):
     """Hello back. In the middle of a chat, pick up where it left off."""
-    hello = _say(state, "welcome_back" if state["pending_question"] and state["enquiry"] else "greeting")
+    hello = _welcome(state, returning) or _say(
+        state, "welcome_back" if state["pending_question"] and state["enquiry"] else "greeting")
     return _join(hello, _pending_or_details(state, short=True))
+
+
+def _welcome(state, design_id):
+    design = db.get_design(design_id) if design_id else None
+    return _say(state, "welcome_back_design", name=design["name"], design=design_id) if design else ""
+
+
+def _wait_for(state, design_id):
+    if design_id not in state["waiting_for"]:
+        state["waiting_for"].append(design_id)
+
+
+def back_in_stock(design_id):
+    """Staff raised a design's stock above 0: draft a "it's back" message for every
+    buyer who wanted it. Staff approve it in the Inbox like any other reply."""
+    design = db.get_design(design_id)
+    drafted = 0
+    for conv in db.list_conversations():
+        state = {**new_state(), **conv["state"]}
+        if design is None or design_id not in state["waiting_for"] or not state["enquiry_id"]:
+            continue
+        state["waiting_for"].remove(design_id)
+        state["focus"] = state["chosen"] = design_id
+        lang = state["language"]
+        reply = _say(state, "back_in_stock", name=design["name"], design=design_id,
+                     available=design["quantity_available"], units=_units(lang, design["unit"], design["quantity_available"]),
+                     rate=templates._rupees(design["rate"]), unit=_units(lang, design["unit"], 1))
+        _ask(state, "ask_quantity", "quantity", short_key="ask_quantity_short")
+        state["stage"], state["action"], state["last_reply"] = "asked_quantity", "back_in_stock", reply
+        _set_outbox(state, reply, "back_in_stock", "template")
+        if design_id in state["shortlist"] and not state["outbox"]["picked"]:
+            state["outbox"]["picked"] = [design_id]  # its photo goes with the message
+        state["summary"] = _summary(state)
+        db.save_conversation(conv["phone"], state)
+        db.set_followup(state["enquiry_id"], {
+            "buyer_text": None, "intent": "back_in_stock", "reply": reply, "read_by": "app",
+            "priority": "needs_reply", "flagged": False, "stage": state["stage"], "summary": state["summary"],
+            "memory": state["memory"], "reply_source": "template", "needs_staff": False,
+        })
+        drafted += 1
+    return drafted
 
 
 def _off_topic(state, kind=None):

@@ -3,7 +3,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from backend import db, stock_csv
+from backend import conversation, db, inbox, stock_csv
 from backend.config import ATTRIBUTES, CATALOGUE_DIR, CONFIG
 from backend.routes.common import file_inside
 from backend.tagging import clean_tags
@@ -50,8 +50,9 @@ class StockUpdate(BaseModel):
 
 @router.patch("/designs/{design_id}/stock")
 def update_stock(design_id: str, update: StockUpdate):
-    """Staff edit stock and rate."""
-    if db.get_design(design_id) is None:
+    """Staff edit stock and rate. Back in stock = a draft for every buyer who wanted it."""
+    old = db.get_design(design_id)
+    if old is None:
         raise HTTPException(404, "Design not found")
     if not 0 <= update.quantity_available <= 1_000_000:
         raise HTTPException(400, "Stock must be a whole number from 0 to 1,000,000.")
@@ -65,7 +66,11 @@ def update_stock(design_id: str, update: StockUpdate):
     except OSError as e:
         raise HTTPException(500, f"Could not save stock.csv ({type(e).__name__}).") from e
     db.update_stock(design_id, update.quantity_available, rate)
-    return db.get_design(design_id)
+    drafted = 0
+    if old["quantity_available"] <= 0 < update.quantity_available:
+        with inbox.lock:
+            drafted = conversation.back_in_stock(design_id)
+    return {**db.get_design(design_id), "back_in_stock_drafts": drafted}
 
 
 @router.get("/images/{image_file}")
