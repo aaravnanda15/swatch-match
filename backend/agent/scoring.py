@@ -163,13 +163,21 @@ def reason_for(signals, tags, asked, photo_tags, shade):
             look = "Similar look to the photo"
         else:
             look = "Different look from the photo"
-        same = [ATTR_WORDS[a] for a in ("pattern", "border", "fabric", "work_type")
+        # "same pattern and border", or the work itself: "same zari weave"
+        same = [tags[a] if a == "work_type" else ATTR_WORDS[a] for a in ("pattern", "border", "fabric", "work_type")
                 if tags.get(a) and tags.get(a) == photo_tags.get(a) and tags.get(a) not in EMPTY_VALUES]
         parts.append(f"{look}: same {_join(same[:3])}" if same else look)
 
     if asked:
-        got = [asked[a] for a in ("main_colour", "fabric", "pattern", "garment_type", "border", "work_type")
-               if a in asked and tags.get(a) == asked[a]]
+        matches = {a for a in asked if tags.get(a) == asked[a]}
+        # "Red silk saree with zari border as asked"
+        core = [asked[a] for a in ("main_colour", "fabric", "pattern", "garment_type") if a in matches]
+        extras = []
+        if "border" in matches and asked["border"] not in EMPTY_VALUES:
+            extras.append(f"{asked['border']} border")
+        if "work_type" in matches and asked["work_type"] not in EMPTY_VALUES:
+            extras.append(asked["work_type"])
+        got = core + (["with " + " and ".join(extras)] if core and extras else extras)
         # Differences buyers care about most come first: colour, then pattern...
         missed = [(a, asked[a]) for a in MISS_ORDER if a in asked and tags.get(a) != asked[a]]
         if got:

@@ -224,7 +224,8 @@ use the Cloudflare quick tunnel in *Live demo* instead.
    **`STAFF_PASSCODE`**. Set the passcode whenever the app is online, or anyone with the link could open it.
 
 The Dockerfile builds the UI, installs CPU-only PyTorch, downloads CLIP and loads the catalogue at build time, so
-the Space starts quickly. **Note:** free Spaces have no permanent disk. Tag edits made in the app and the Log reset
+the Space starts quickly. It has not been built end to end yet (the team's live demo runs on Codespaces and a
+Cloudflare tunnel instead), so expect to fix small things on the first build. **Note:** free Spaces have no permanent disk. Tag edits made in the app and the Log reset
 when the Space restarts, so keep checked tags in `catalogue/tags.csv`.
 
 ## Connect WhatsApp (optional)

@@ -117,6 +117,8 @@ def read_photo(run):
     run.photo = tools.describe_photo(run.img, vector)
     if run.photo["llm_failed"]:
         run.fallback_reasons.append("The AI could not describe the photo, so basic photo tags were used.")
+    elif not run.photo["ai_available"]:
+        run.fallback_reasons.append("No AI key is set, so the photo was described with basic tags.")
     run.trace.add("describe_photo", "Note the photo's pattern, border and shade, to explain each match",
                   "buyer's photo", _describe_tags(run.photo["tags"], run.photo["source"]), t)
 
@@ -239,8 +241,9 @@ def label_results(run, kept, scores, stock):
             }
         )
 
-    # Nothing good enough: say so plainly and offer the nearest as alternatives
-    no_match = not results or results[0]["label"] == "none"
+    # Nothing good enough, or too vague to judge: say so plainly. A vague
+    # enquiry ("I want a saree") only gets best guesses, never "Very close".
+    no_match = not results or results[0]["label"] == "none" or run.mode == "vague"
     if no_match:
         for r in results:
             r["label"] = "none"

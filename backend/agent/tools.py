@@ -73,6 +73,7 @@ def describe_photo(img, query_vector):
         "colour": colour_profile(img),
         "source": source,
         "llm_failed": provider.available and source != "gemini",
+        "ai_available": provider.available,
     }
 
 

@@ -78,7 +78,7 @@ export default function Shortlist({ answer, onOpenImage, whatsapp }) {
         <div className="flex gap-2 rounded-xl border border-line bg-card px-3 py-2.5 text-sm">
           <Icon name="box" className="mt-px h-5 w-5 shrink-0 text-muted" />
           <p>
-            <span className="font-semibold">No close match in stock.</span>{" "}
+            <span className="font-semibold">No match in stock.</span>{" "}
             <span className="text-muted">These are the nearest alternatives. Tell the buyer honestly.</span>
           </p>
         </div>
