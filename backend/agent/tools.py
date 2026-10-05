@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from backend import db, embeddings, llm, tagging
+from backend import db, embeddings, llm, tagging, vector_index
 from backend.agent import lexicon, scoring, templates
 from backend.config import ATTRIBUTES, CATALOGUE_DIR
 from backend.images import colour_profile, load_image_file
@@ -16,12 +16,9 @@ def encode_photo(img):
 
 
 def image_search(query_vector):
-    """Compare the buyer's photo with every catalogue photo."""
-    ids, matrix = db.load_embeddings()
-    if not ids:
-        return {}
-    raw = matrix @ query_vector
-    return {d: scoring.stretch(float(s), scoring.SCORING["image_range"]) for d, s in zip(ids, raw, strict=True)}
+    """Compare the buyer's photo with the catalogue photos."""
+    sims = vector_index.search(query_vector)
+    return {d: scoring.stretch(s, scoring.SCORING["image_range"]) for d, s in sims.items()}
 
 
 def parse_text_to_attributes(text):
@@ -124,13 +121,9 @@ def english_phrase(attributes, fallback_text):
 
 
 def text_search(phrase):
-    """Compare a text description with every catalogue photo (CLIP)."""
-    ids, matrix = db.load_embeddings()
-    if not ids:
-        return {}
-    query = embeddings.encode_texts([phrase])[0]
-    raw = matrix @ query
-    return {d: scoring.stretch(float(s), scoring.SCORING["text_range"]) for d, s in zip(ids, raw, strict=True)}
+    """Compare a text description with the catalogue photos (CLIP)."""
+    sims = vector_index.search(embeddings.encode_texts([phrase])[0])
+    return {d: scoring.stretch(s, scoring.SCORING["text_range"]) for d, s in sims.items()}
 
 
 def attribute_filter(wanted, designs):

@@ -1,14 +1,20 @@
 """The agent: looks at what the buyer sent and calls the tools in a fixed, explainable order."""
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
 
-from backend import db
+from backend import db, llm
 from backend.agent import scoring, tools
 from backend.config import CONFIG
 
 TOP_K = CONFIG["scoring"]["top_k"]
 CANDIDATES = CONFIG["scoring"]["candidates"]
 IMAGE_POOL = CONFIG["scoring"]["image_pool"]
+
+# describe_photo (a Gemini call, the slowest step) runs here, alongside the
+# CLIP search and the text steps
+_background = ThreadPoolExecutor(max_workers=4, thread_name_prefix="describe")
 
 
 class Trace:
@@ -17,7 +23,7 @@ class Trace:
     def __init__(self):
         self.steps = []
 
-    def add(self, tool, why, given, got, started):
+    def add(self, tool, why, given, got, started, ms=None):
         self.steps.append(
             {
                 "step": len(self.steps) + 1,
@@ -25,7 +31,7 @@ class Trace:
                 "why": why,
                 "input": given,
                 "output": got,
-                "ms": int((time.perf_counter() - started) * 1000),
+                "ms": ms if ms is not None else int((time.perf_counter() - started) * 1000),
             }
         )
 
@@ -56,17 +62,21 @@ class Run:
         self.fallback_reasons = []
         self.clarifying_question = None
         self.photo = None
+        self.describing = None  # background photo description (a Future)
         self.query = {"attributes": {}, "max_rate": None, "min_quantity": None, "language": "en", "source": None}
         self.image_scores, self.attr_scores, self.text_scores = {}, {}, {}
 
 
 def handle_enquiry(text, img):
     """text: the buyer's message ("" if none)."""
+    started = time.perf_counter()
     run = Run(text, img)
     if run.img is not None:
-        read_photo(run)
+        start_photo(run)
     if run.text:
         read_text(run)
+    if run.img is not None:
+        finish_photo(run)
     pool = narrow_to_lookalikes(run)
     scores, weights = score_designs(run, pool)
     kept, stock, over_budget = check_stock_and_budget(run, pool, scores)
@@ -84,25 +94,36 @@ def handle_enquiry(text, img):
         "over_budget_removed": len(over_budget),
         "results": results,
         "trace": run.trace.steps,
+        "elapsed_ms": int((time.perf_counter() - started) * 1000),
     }
 
 
-def read_photo(run):
-    """Compare the buyer's photo with every catalogue photo, and describe it."""
+def start_photo(run):
+    """CLIP search now; the (slow) photo description starts in the background."""
     t = time.perf_counter()
     vector = tools.encode_photo(run.img)
+    offline = llm.is_offline()  # the background thread must follow this thread's AI-off switch
+
+    def describe():
+        began = time.perf_counter()
+        with llm.offline() if offline else nullcontext():
+            photo = tools.describe_photo(run.img, vector)
+        return photo, int((time.perf_counter() - began) * 1000)
+
+    run.describing = _background.submit(describe)
     run.image_scores = tools.image_search(vector)
     run.trace.add("image_search", "Buyer sent a photo: compare it with every catalogue photo",
                   "buyer's photo", f"closest: {', '.join(tools.top_ids(run.image_scores, 3))}", t)
 
-    t = time.perf_counter()
-    run.photo = tools.describe_photo(run.img, vector)
+
+def finish_photo(run):
+    run.photo, ms = run.describing.result()
     if run.photo["llm_failed"]:
         run.fallback_reasons.append("The AI could not describe the photo, so basic photo tags were used.")
     elif not run.photo["ai_available"]:
         run.fallback_reasons.append("No AI key is set, so the photo was described with basic tags.")
-    run.trace.add("describe_photo", "Note the photo's pattern, border and shade, to explain each match",
-                  "buyer's photo", _describe_tags(run.photo["tags"], run.photo["source"]), t)
+    run.trace.add("describe_photo", "Note the photo's pattern, border and shade (ran alongside the other steps)",
+                  "buyer's photo", _describe_tags(run.photo["tags"], run.photo["source"]), None, ms=ms)
 
 
 def read_text(run):

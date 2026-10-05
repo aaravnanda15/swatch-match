@@ -79,6 +79,10 @@ The design choices that keep it reliable:
   are tagged with CLIP, and questions come from templates. A small *Basic mode* notice tells staff when this happens.
 - **Photo + text** (*"this design but in blue"*): the photo picks the 10 lookalike designs and the words re-rank
   them.
+- **Matching is cheap.** Each catalogue photo is turned into 512 numbers once, at ingest; the server keeps them
+  in memory and reloads only when the catalogue changes. A buyer's photo is compared with all of them in one
+  matrix multiply (0.1 ms for 30 designs, about 16 ms for 200,000). Only the closest 500 go on to scoring, and the
+  slow Gemini photo description runs in parallel with the search.
 - **Score** = `w_image × photo similarity + w_attr × tag match + w_text × CLIP text similarity`. The weights depend
   on what was sent and are set in `config.yaml`.
 

@@ -91,17 +91,21 @@ class GeminiProvider:
         self.model = CONFIG["llm"]["model"]
         self.timeout_ms = int(CONFIG["llm"]["timeout_seconds"] * 1000)
         self._client = None
+        self._client_lock = threading.Lock()
         self.last_error = None
 
     def _get_client(self):
-        if self._client is None:
-            from google import genai
-            from google.genai import types
+        # requests run in parallel threads; two clients made at once would have
+        # one closed (garbage-collected) while still in use
+        with self._client_lock:
+            if self._client is None:
+                from google import genai
+                from google.genai import types
 
-            self._client = genai.Client(
-                api_key=self.api_key,
-                http_options=types.HttpOptions(timeout=self.timeout_ms),
-            )
+                self._client = genai.Client(
+                    api_key=self.api_key,
+                    http_options=types.HttpOptions(timeout=self.timeout_ms),
+                )
         return self._client
 
     def _generate(self, contents):
@@ -163,6 +167,10 @@ def offline():
         yield
     finally:
         _thread.off = False
+
+
+def is_offline():
+    return getattr(_thread, "off", False)
 
 
 def get_llm():

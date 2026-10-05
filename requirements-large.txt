@@ -1,0 +1,1 @@
+faiss-cpu>=1.8  # optional: only for catalogues above search.large_catalogue in config.yaml

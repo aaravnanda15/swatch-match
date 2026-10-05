@@ -23,8 +23,9 @@ function show(value) {
   return String(value);
 }
 
-export default function TracePanel({ trace, weights }) {
-  const totalMs = trace.reduce((sum, s) => sum + s.ms, 0);
+export default function TracePanel({ trace, weights, elapsedMs }) {
+  // some steps run in parallel, so prefer the real wall-clock time
+  const totalMs = elapsedMs ?? trace.reduce((sum, s) => sum + s.ms, 0);
   const mix = Object.entries(weights)
     .filter(([, w]) => w > 0)
     .map(([k, w]) => `${Math.round(w * 100)}% ${SIGNAL_NAMES[k]}`)

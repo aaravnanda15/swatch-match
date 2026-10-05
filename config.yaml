@@ -57,6 +57,15 @@ attributes:
   fabric: [silk, cotton, georgette, chiffon, crepe, net, organza, linen, rayon, polyester, unknown]
   work_type: [none, zari weave, embroidery, print, mirror work, sequins, stone work, hand painted, other]
 
+# Catalogue search. Exact search with one matrix multiply; only the closest
+# top_n designs go on to scoring. Measured on a laptop: 4.5 ms at 60k designs,
+# 16 ms at 200k, 95 ms at 1M (2 GB of vectors), always exact. An HNSW index
+# took 19-78 s to build and was less accurate, so it is only worth it for
+# multi-million catalogues.
+search:
+  top_n: 500
+  large_catalogue: 2000000  # above this, use faiss HNSW if installed (requirements-large.txt)
+
 # WhatsApp Business Cloud API. Keys go in .env, not here.
 whatsapp:
   api_version: v23.0              # Meta Graph API version; update when Meta retires it

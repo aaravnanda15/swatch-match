@@ -117,7 +117,7 @@ export default function Shortlist({ answer, onOpenImage, whatsapp }) {
         />
       )}
 
-      <TracePanel trace={answer.trace} weights={answer.weights} />
+      <TracePanel trace={answer.trace} weights={answer.weights} elapsedMs={answer.elapsed_ms} />
     </div>
   );
 }

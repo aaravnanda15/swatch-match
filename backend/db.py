@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     image_ref  TEXT,                   -- 'upload:<file>' or 'catalogue:<file>'
     caption    TEXT
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key   TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+);
 CREATE TABLE IF NOT EXISTS stock_changes (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     changed_at   TEXT NOT NULL DEFAULT (datetime('now')),
@@ -139,6 +143,8 @@ def remove_designs_not_in(conn, keep_ids):
     for design_id in gone:
         for table in ("tags", "embeddings", "stock", "designs"):
             conn.execute(f"DELETE FROM {table} WHERE design_id = ?", (design_id,))
+    if gone:
+        _bump_embeddings_version(conn)
     return gone
 
 
@@ -212,6 +218,21 @@ def save_embedding(conn, design_id, image_file, vector):
         "ON CONFLICT(design_id) DO UPDATE SET image_file = excluded.image_file, vector = excluded.vector",
         (design_id, image_file, np.asarray(vector, dtype=np.float32).tobytes()),
     )
+    _bump_embeddings_version(conn)
+
+
+def _bump_embeddings_version(conn):
+    # the server keeps the vectors in memory and reloads them when this changes
+    conn.execute(
+        "INSERT INTO meta (key, value) VALUES ('embeddings_version', 1) "
+        "ON CONFLICT(key) DO UPDATE SET value = value + 1"
+    )
+
+
+def embeddings_version():
+    with connect() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = 'embeddings_version'").fetchone()
+    return row["value"] if row else 0
 
 
 def load_embeddings():
