@@ -110,6 +110,8 @@ export default function InsightsPage({ active, demoMode }) {
             />
           </dl>
 
+          <ReplyWriters replies={data.replies} />
+
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <MissedDemand data={data} />
             <PerDay perDay={data.per_day} />
@@ -155,6 +157,28 @@ export default function InsightsPage({ active, demoMode }) {
         </>
       )}
     </div>
+  );
+}
+
+// Who wrote the replies staff sent: the AI, or the plain template it falls back to
+function ReplyWriters({ replies }) {
+  if (!replies || replies.composed + replies.template === 0) return null;
+  const aiShare = replies.template_share == null ? null : 1 - replies.template_share;
+  return (
+    <section className="rounded-2xl border border-line bg-card p-4">
+      <h3 className="font-display text-lg font-semibold tracking-tight">Replies written by AI</h3>
+      <p className="mt-1 text-sm text-muted">
+        <span className="font-display text-2xl font-semibold text-ink">{pct(aiShare)}</span> of the replies you sent were
+        written by AI ({replies.composed} AI, {replies.template} plain template)
+        {replies.edit_rate != null && <> · edited by staff before sending: {pct(replies.edit_rate)}</>}
+      </p>
+      {replies.warn && (
+        <p className="mt-2 flex items-center gap-1.5 rounded-xl bg-saffron-soft px-3 py-2 text-xs text-[#6e4a10]">
+          <Icon name="alert" className="h-4 w-4 shrink-0" />
+          More than 1 in 10 replies used the plain template. Check the Gemini key or the per-minute limit.
+        </p>
+      )}
+    </section>
   );
 }
 

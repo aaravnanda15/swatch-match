@@ -73,7 +73,7 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp,
   async function approve() {
     setError("");
     try {
-      await approveReply(enquiryId, picked, text, language);
+      await approveReply(enquiryId, picked, text, language, { draft_source: source, edited });
       const copied = await copyText(text);
       setApproved(copied ? "copied" : "saved");
     } catch (e) {
@@ -150,6 +150,7 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp,
             text={text}
             language={language}
             disabled={loading || !text.trim() || stale}
+            draft={{ draft_source: source, edited }}
           />
         </div>
       )}

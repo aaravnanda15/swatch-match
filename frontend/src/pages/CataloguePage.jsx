@@ -153,6 +153,7 @@ function Stat({ value, label }) {
 function DesignCard({ design, attributes, onSaved, onOpenImage }) {
   const [editing, setEditing] = useState(false);
   const [editingStock, setEditingStock] = useState(false);
+  const [restocked, setRestocked] = useState(0); // buyers who get a "back in stock" draft
   const [draft, setDraft] = useState(design.tags);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -215,6 +216,14 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
         </div>
       </div>
 
+      {restocked > 0 && (
+        <p className="flex items-center gap-1.5 border-t border-line/70 bg-leaf-soft px-3 py-2 text-xs text-leaf">
+          <Icon name="inbox" className="h-4 w-4 shrink-0" />
+          {restocked} {restocked === 1 ? "buyer who wanted this gets" : "buyers who wanted this get"} a "back in stock"
+          draft in the Inbox.
+        </p>
+      )}
+
       {!editing && !editingStock && (
         <div className="space-y-2 border-t border-line/70 px-3 py-2.5">
           <div className="flex flex-wrap gap-1">
@@ -254,6 +263,7 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
           design={design}
           onSaved={(updated) => {
             onSaved(updated);
+            setRestocked(updated.back_in_stock_drafts || 0);
             setEditingStock(false);
           }}
           onCancel={() => setEditingStock(false)}

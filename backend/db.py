@@ -116,6 +116,8 @@ NEW_COLUMNS = {
         "wa_sent_ids": "TEXT",
         "enquiry_id": "INTEGER",
         "is_sample": "INTEGER NOT NULL DEFAULT 0",
+        "draft_source": "TEXT",  # who wrote the draft: 'composed' (AI) or 'template'
+        "edited": "INTEGER",  # 1 = staff changed the draft before sending
     },
 }
 
@@ -360,6 +362,23 @@ def set_followup(enquiry_id, followup, surface=True):
             conn.execute("UPDATE enquiries SET followup_json = ? WHERE id = ?", (json.dumps(followup), enquiry_id))
 
 
+def last_design(phone):
+    """The design a returning buyer was last sent (or else the top of their last
+    shortlist), for "welcome back"."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT a.picked_json FROM audit_log a JOIN enquiries e ON e.id = a.enquiry_id "
+            "WHERE e.buyer_phone = ? AND a.picked_json != '[]' ORDER BY a.id DESC LIMIT 1", (phone,)
+        ).fetchone()
+        if row:
+            return json.loads(row["picked_json"])[0]
+        row = conn.execute(
+            "SELECT shortlist_json FROM enquiries WHERE buyer_phone = ? ORDER BY id DESC LIMIT 1", (phone,)
+        ).fetchone()
+    ids = json.loads(row["shortlist_json"] or "{}").get("ids", []) if row else []
+    return ids[0] if ids else None
+
+
 def list_conversations():
     with connect() as conn:
         rows = conn.execute("SELECT phone, state_json, updated_at FROM conversations ORDER BY updated_at").fetchall()
@@ -407,11 +426,12 @@ def set_status(enquiry_id, status):
             conn.execute("UPDATE enquiries SET status = ? WHERE id = ?", (status, enquiry_id))
 
 
-def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sent_ids=None):
+def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sent_ids=None, draft_source=None,
+              edited=None):
     with connect() as conn:
         cur = conn.execute(
             "INSERT INTO audit_log (enquiry_text, enquiry_image, shortlist_json, picked_json, reply_text, language, "
-            "sent_via, wa_sent_ids, enquiry_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "sent_via, wa_sent_ids, enquiry_id, draft_source, edited) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 enquiry["text"],
                 enquiry["image_file"],
@@ -422,9 +442,22 @@ def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sen
                 sent_via,
                 json.dumps(wa_sent_ids) if wa_sent_ids else None,
                 enquiry["id"],
+                draft_source,
+                None if edited is None else int(edited),
             ),
         )
         return cur.lastrowid
+
+
+def reply_sources(since_sqlite_time):
+    """Approved replies: how many drafts the AI wrote, and how many staff edited."""
+    with connect() as conn:
+        return dict(conn.execute(
+            "SELECT SUM(draft_source = 'composed') AS composed, SUM(draft_source = 'template') AS template, "
+            "SUM(edited = 1) AS edited, SUM(edited IS NOT NULL) AS checked "
+            "FROM audit_log WHERE is_sample = 0 AND created_at >= ?",
+            (since_sqlite_time,),
+        ).fetchone())
 
 
 def list_audit(limit=200):

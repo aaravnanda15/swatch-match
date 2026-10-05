@@ -62,6 +62,8 @@ class ApproveRequest(BaseModel):
     picked: list[str] = []
     text: str
     language: str = "en"
+    draft_source: str | None = None
+    edited: bool | None = None
 
 
 @router.post("/approve")
@@ -69,7 +71,7 @@ def approve(req: ApproveRequest):
     """Staff approved the (maybe edited) reply and will paste it themselves. Nothing is sent."""
     text = check_reply_text(req.text)
     enquiry = enquiry_and_picks(req.enquiry_id, req.picked)
-    audit_id = db.add_audit(enquiry, req.picked, text, req.language)
+    audit_id = db.add_audit(enquiry, req.picked, text, req.language, draft_source=req.draft_source, edited=req.edited)
     if enquiry["source"] == "whatsapp":
         db.set_status(enquiry["id"], "sent")
     return {"audit_id": audit_id}

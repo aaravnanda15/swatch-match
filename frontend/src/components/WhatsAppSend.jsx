@@ -3,7 +3,8 @@ import { sendWhatsApp } from "../api.js";
 import Icon from "./Icon.jsx";
 
 // whatsapp = { enquiryId, status, hoursLeft, buyerName, onSent }
-export default function WhatsAppSend({ whatsapp, picked, text, language, disabled }) {
+// draft = { draft_source, edited }: who wrote the reply, for Insights
+export default function WhatsAppSend({ whatsapp, picked, text, language, disabled, draft }) {
   const [confirming, setConfirming] = useState(false);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState(null);
@@ -29,7 +30,7 @@ export default function WhatsAppSend({ whatsapp, picked, text, language, disable
     setSending(true);
     setError("");
     try {
-      const r = await sendWhatsApp(whatsapp.enquiryId, picked, text, language);
+      const r = await sendWhatsApp(whatsapp.enquiryId, picked, text, language, draft);
       setResult(r);
       setConfirming(false);
       whatsapp.onSent();

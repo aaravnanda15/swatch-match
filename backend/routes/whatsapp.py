@@ -133,6 +133,8 @@ class SendRequest(BaseModel):
     picked: list[str] = []
     text: str
     language: str = "en"
+    draft_source: str | None = None  # "composed" or "template", for Insights
+    edited: bool | None = None
 
 
 class SendAllRequest(BaseModel):
@@ -184,7 +186,8 @@ def whatsapp_send(req: SendRequest):
                 failed.append({"design_id": design_id, "error": str(e)})
 
         db.set_status(enquiry["id"], "sent")
-        audit_id = db.add_audit(enquiry, picked, text, req.language, sent_via="whatsapp", wa_sent_ids=sent_ids)
+        audit_id = db.add_audit(enquiry, picked, text, req.language, sent_via="whatsapp", wa_sent_ids=sent_ids,
+                                draft_source=req.draft_source, edited=req.edited)
     return {
         "audit_id": audit_id,
         "messages_sent": len(sent_ids),

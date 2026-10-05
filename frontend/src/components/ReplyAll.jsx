@@ -42,6 +42,8 @@ export default function ReplyAll({ onClose, onSent, onOpenChat }) {
           text: texts[i.enquiry_id],
           picked: i.picked.map((d) => d.design_id),
           language: i.language,
+          draft_source: i.source,
+          edited: texts[i.enquiry_id] !== i.text,
         })),
       );
       setResults((old) => ({ ...old, ...Object.fromEntries(r.results.map((x) => [x.enquiry_id, x])) }));

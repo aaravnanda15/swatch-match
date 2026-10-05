@@ -536,6 +536,8 @@ const FILTER_TEXT = {
 const INTENT_TEXT = {
   answer_to_question: "Answer to your question",
   question_about_shown_designs: "Question about the designs",
+  back_in_stock: "Back in stock",
+  question_about_product_or_terms: "Question about the product or terms",
   wants_other_designs: "Wants other designs",
   greeting: "Greeting",
   off_topic: "Off topic",
@@ -552,7 +554,9 @@ function FollowUp({ item, onSent }) {
   return (
     <section className="rise rounded-2xl border border-indigo/25 bg-card p-3 shadow-[0_1px_2px_rgb(35_29_24/0.05)]">
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="font-display text-lg font-semibold tracking-tight">Buyer replied</h3>
+        <h3 className="font-display text-lg font-semibold tracking-tight">
+          {f.intent === "back_in_stock" ? "Back in stock" : "Buyer replied"}
+        </h3>
         <span className="rounded-full bg-indigo-soft px-2 py-0.5 text-[11px] font-semibold text-indigo">
           {INTENT_TEXT[f.intent] || f.intent}
         </span>
@@ -582,6 +586,7 @@ function FollowUp({ item, onSent }) {
               text={text}
               language={item.answer?.query?.language || "en"}
               disabled={!text.trim()}
+              draft={{ draft_source: f.reply_source, edited: text !== f.reply }}
             />
             <button
               type="button"

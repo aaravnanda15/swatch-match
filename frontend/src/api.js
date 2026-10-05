@@ -61,11 +61,12 @@ export function draftReply(enquiryId, picked, language) {
   });
 }
 
-export function approveReply(enquiryId, picked, text, language) {
+// extra: { draft_source, edited } so Insights can tell AI drafts from plain ones
+export function approveReply(enquiryId, picked, text, language, extra = {}) {
   return request("/api/approve", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language }),
+    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language, ...extra }),
   });
 }
 
@@ -90,11 +91,11 @@ export function dismissInboxItem(id) {
   return request(`/api/inbox/${id}/dismiss`, { method: "POST" });
 }
 
-export function sendWhatsApp(enquiryId, picked, text, language) {
+export function sendWhatsApp(enquiryId, picked, text, language, extra = {}) {
   return request("/api/whatsapp/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language }),
+    body: JSON.stringify({ enquiry_id: enquiryId, picked, text, language, ...extra }),
   });
 }
 

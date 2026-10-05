@@ -82,6 +82,17 @@ def compute(days=7, tz_offset_minutes=330):
 
     offered = Counter(d for picks in offered_lists for d in picks)
 
+    # who wrote the approved replies: the AI, or the plain template it falls back to
+    sources = {k: v or 0 for k, v in db.reply_sources(since.strftime("%Y-%m-%d %H:%M:%S")).items()}
+    drafted = sources["composed"] + sources["template"]
+    template_share = round(sources["template"] / drafted, 3) if drafted else None
+    replies = {
+        **sources,
+        "template_share": template_share,
+        "edit_rate": round(sources["edited"] / sources["checked"], 3) if sources["checked"] else None,
+        "warn": template_share is not None and template_share > 0.10,
+    }
+
     def design_list(counter, n):
         out = []
         for design_id, count in counter.most_common(n):
@@ -107,4 +118,5 @@ def compute(days=7, tz_offset_minutes=330):
         "out_of_stock_wanted": design_list(out_of_stock, 5),
         "most_offered": design_list(offered, 5),
         "sample_count": db.count_samples(),
+        "replies": replies,
     }
