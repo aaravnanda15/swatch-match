@@ -3,108 +3,14 @@
     python -m pytest tests -v
 
 Every script runs twice: with Gemini (skipped when there is no key) and with
-the AI switched off, i.e. the keyword fallback. The tests use a copy of the
-database, so the real one is never touched.
+the AI switched off, i.e. the keyword fallback. See conftest.py for the setup.
 """
 
-import csv
-import os
-import random
 import re
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
-from pathlib import Path
 
-import pytest
+from helpers import STOCK, Chat, is_red_saree
 
-ROOT = Path(__file__).resolve().parent.parent
-_tmp = Path(tempfile.mkdtemp(prefix="swatch-test-"))
-os.environ["SWATCH_DB"] = str(_tmp / "swatch.db")  # must be set before backend is imported
-if (ROOT / "data" / "swatch.db").exists():
-    shutil.copy(ROOT / "data" / "swatch.db", _tmp / "swatch.db")
-else:  # fresh clone: build the test database from the catalogue
-    subprocess.run([sys.executable, "-m", "backend.ingest"], cwd=ROOT, check=True)
-
-sys.path.insert(0, str(ROOT))
-from backend import conversation, db, inbox, llm  # noqa: E402
-
-db.init_db()
-with db.connect() as conn:
-    for table in ("conversations", "chat_messages", "wa_seen", "audit_log", "enquiries"):
-        conn.execute(f"DELETE FROM {table}")
-
-STOCK = {r["design_id"]: r for r in csv.DictReader(open(ROOT / "catalogue" / "stock.csv", encoding="utf-8"))}
-STOCK_NUMBERS = {float(r["quantity_available"]) for r in STOCK.values()} | {float(r["rate"]) for r in STOCK.values()}
-BANNED = {"bro", "yo", "bruh", "dude", "shit", "fuck", "fucking", "damn", "wtf", "lol", "bc", "mc"}
-GEMINI_GAP = 4.2  # seconds between Gemini calls in tests, to stay under the free per-minute limit
-
-provider = llm.get_llm()
-if provider.available:
-    _real = provider._generate_once
-    _last = [0.0]
-
-    def _paced(contents):
-        wait = GEMINI_GAP - (time.time() - _last[0])
-        if wait > 0:
-            time.sleep(wait)
-        _last[0] = time.time()
-        return _real(contents)
-
-    provider._generate_once = _paced
-
-
-@pytest.fixture(params=["gemini", "keywords"])
-def mode(request):
-    if request.param == "gemini" and not provider.available:
-        pytest.skip("no GEMINI_API_KEY")
-    if request.param == "keywords":
-        with llm.offline():
-            yield request.param
-    else:
-        yield request.param
-
-
-class Chat:
-    """One buyer, talking through the same path as a real WhatsApp message."""
-
-    def __init__(self, prefix="wamid.TEST"):
-        self.phone = "9100" + str(random.randint(10**7, 10**8 - 1))
-        self.said = []
-        self.prefix = prefix  # wamid.CHAT = a simulated buyer, so replies never go to Meta
-
-    def say(self, text):
-        self.said.append(text)
-        inbox.handle_message({
-            "id": f"{self.prefix}{time.time_ns()}", "phone": self.phone, "name": "Test Buyer",
-            "timestamp": int(time.time()), "type": "text", "original_type": "text", "text": text, "media_id": None,
-        })
-        state = conversation.get_state(self.phone)
-        check_reply(state["last_reply"], self.said)
-        return state
-
-    def state(self):
-        return conversation.get_state(self.phone)
-
-
-def numbers_in(text):
-    text = re.sub(r"\bD\d+\b", " ", text)          # design ids
-    text = re.sub(r"(?m)^\s*\d+\.\s", " ", text)    # "1. " list numbering
-    return {float(n.replace(",", "")) for n in re.findall(r"\d[\d,]*(?:\.\d+)?", text)}
-
-
-def check_reply(reply, buyer_messages):
-    words = set(re.findall(r"[a-z]+", reply.lower()))
-    assert not words & BANNED, f"slang or swearing in reply: {reply!r}"
-    buyer_numbers = set().union(*(numbers_in(m) for m in buyer_messages))
-    unknown = numbers_in(reply) - STOCK_NUMBERS - buyer_numbers
-    assert not unknown, f"number not from stock.csv or the buyer: {unknown} in {reply!r}"
-
-
-def is_red_saree(state):
-    return state["enquiry"].get("main_colour") == "red" and state["enquiry"].get("garment_type") == "saree"
+from backend import db
 
 
 def test_1_kg_for_sarees_asks_to_confirm_pieces(mode):

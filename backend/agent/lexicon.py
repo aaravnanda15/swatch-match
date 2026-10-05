@@ -84,6 +84,12 @@ WORDS = {
     ],
 }
 
+# Words the shop never uses in a reply, and that make a buyer's message rude or off topic
+SWEAR = {"shit", "fuck", "fucking", "fck", "damn", "bitch", "bastard", "asshole", "crap", "wtf", "stfu",
+         "bc", "mc", "bsdk", "bkl", "chutiya", "chutiye", "madarchod", "behenchod", "saala", "sala", "kutta",
+         "kamina", "harami", "gandu", "idiot", "stupid", "dumb"}
+SLANG = {"yo", "bro", "bruh", "dude", "lol", "lmao", "rofl", "sup", "yolo", "bae", "fam", "lit", "meh"}
+
 # Hindi and Gujarati digits -> 0-9, so "२०००" and "૨૦૦૦" read as 2000
 DIGITS = str.maketrans("०१२३४५६७८९૦૧૨૩૪૫૬૭૮૯", "01234567890123456789")
 

@@ -22,10 +22,6 @@ ENQUIRY_FIELDS = ("garment_type", "main_colour", "secondary_colour", "pattern", 
 OFF_TOPIC_LIMIT = 3
 MERGE_SECONDS = CONFIG["whatsapp"]["merge_seconds"]
 
-SWEAR = {"shit", "fuck", "fucking", "fck", "damn", "bitch", "bastard", "asshole", "crap", "wtf", "stfu",
-         "bc", "mc", "bsdk", "bkl", "chutiya", "chutiye", "madarchod", "behenchod", "saala", "sala", "kutta",
-         "kamina", "harami", "gandu", "idiot", "stupid", "dumb"}
-SLANG = {"yo", "bro", "bruh", "dude", "lol", "lmao", "rofl", "sup", "yolo", "bae", "fam", "lit", "meh"}
 GREETINGS = {"hi", "hello", "hey", "hii", "hiii", "namaste", "namaskar", "good", "morning", "evening", "afternoon",
              "kem", "cho", "salaam", "ram", "jai", "shree", "krishna", "नमस्ते", "नमस्कार", "નમસ્તે", "ji"}
 YES = {"yes", "y", "yeah", "yep", "haan", "han", "ha", "haa", "ji", "ok", "okay", "sure", "done", "confirm", "theek",
@@ -89,7 +85,7 @@ def keyword_classify(state, text):
         return "off_topic", {"filter": "spam"}, True
     if not re.search(r"[a-z0-9ऀ-ॿ઀-૿]", low):
         return "abusive_or_nonsense", {"filter": "noise"}, True  # emojis or symbols only
-    if any(w in SWEAR or w in SLANG for w in words):
+    if any(w in lexicon.SWEAR or w in lexicon.SLANG for w in words):
         return "abusive_or_nonsense", {"filter": "rude"}, True
 
     number = re.search(r"\d+(?:\.\d+)?", low)
