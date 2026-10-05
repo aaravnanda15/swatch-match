@@ -111,7 +111,7 @@ def start_photo(run):
         return photo, int((time.perf_counter() - began) * 1000)
 
     run.describing = _background.submit(describe)
-    run.image_scores = tools.image_search(vector)
+    run.image_scores = tools.image_search(vector, run.img)
     run.trace.add("image_search", "Buyer sent a photo: compare it with every catalogue photo",
                   "buyer's photo", f"closest: {', '.join(tools.top_ids(run.image_scores, 3))}", t)
 

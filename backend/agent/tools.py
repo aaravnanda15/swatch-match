@@ -5,7 +5,7 @@ import numpy as np
 from backend import db, embeddings, llm, tagging, vector_index
 from backend.agent import lexicon, scoring, templates
 from backend.config import ATTRIBUTES, CATALOGUE_DIR
-from backend.images import colour_profile, load_image_file
+from backend.images import colour_histogram, colour_profile, load_image_file
 
 LANGUAGES = ("en", "hi", "gu", "hinglish")
 
@@ -15,10 +15,28 @@ def encode_photo(img):
     return embeddings.encode_images([img])[0]
 
 
-def image_search(query_vector):
-    """Compare the buyer's photo with the catalogue photos."""
+def image_search(query_vector, img=None):
+    """Compare the buyer's photo with the catalogue photos: CLIP for the look, plus
+    how close the colours are (CLIP alone mixes up designs of different colours)."""
     sims = vector_index.search(query_vector)
+    if img is not None:
+        wanted = colour_histogram(img)
+        weight = scoring.SCORING["colour_weight"]
+        designs = {d["design_id"]: d["image_file"] for d in db.list_designs()}
+        sims = {d: s + weight * float(np.minimum(wanted, design_histogram(designs[d])).sum()) if d in designs else s
+                for d, s in sims.items()}
     return {d: scoring.stretch(s, scoring.SCORING["image_range"]) for d, s in sims.items()}
+
+
+_design_histograms = {}
+
+
+def design_histogram(image_file):
+    path = CATALOGUE_DIR / image_file
+    key = (image_file, path.stat().st_mtime)
+    if key not in _design_histograms:
+        _design_histograms[key] = colour_histogram(load_image_file(path))
+    return _design_histograms[key]
 
 
 def parse_text_to_attributes(text):

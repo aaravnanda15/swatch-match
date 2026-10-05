@@ -2,6 +2,8 @@
 
 import io
 
+import numpy as np
+
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from backend.config import CONFIG
@@ -66,3 +68,13 @@ def colour_profile(img: Image.Image):
     if sum(slices) > len(pixels) * 0.2:
         hue = slices.index(max(slices)) * 30 + 15
     return {"brightness": brightness, "hue": hue}
+
+
+def colour_histogram(img: Image.Image):
+    """Hue, saturation and brightness of the middle of a photo, as 192 shares that add up to 1."""
+    w, h = img.size
+    middle = img.crop((int(w * 0.15), int(h * 0.15), int(w * 0.85), int(h * 0.85))).resize((96, 96))
+    hsv = np.asarray(middle.convert("HSV")).reshape(-1, 3).astype(int)
+    bins = (hsv[:, 0] * 12 // 256) * 16 + (hsv[:, 1] * 4 // 256) * 4 + hsv[:, 2] * 4 // 256
+    counts = np.bincount(bins, minlength=192).astype(float)
+    return counts / counts.sum()
