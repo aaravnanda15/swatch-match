@@ -41,7 +41,34 @@ memory, which is slow and depends on whoever is on duty.
    new enquiry: the app asks "Sarees are sold per piece. Do you mean 67 pieces of the red saree?", checks the
    number against `stock.csv`, and stays polite and on track whatever the buyer types.
 
+9. **Replies sound like a person who read the message.** The app still decides what to do (show designs, ask
+   how many, check stock, confirm). Gemini then writes that reply in the buyer's language, about what they said
+   ("Congratulations on your daughter's wedding!"), using only facts the app takes from `stock.csv` and the shop's
+   terms.
+10. **A reply guard checks every AI reply** before staff see it: every number and design ID must be in those facts
+    (or the buyer's own message), nothing the app decided may be left out, the script must match the buyer
+    (Gujarati, Devanagari, Latin), and no slang or em dashes. If a check fails, the AI gets one retry with the exact
+    problem ("you wrote 1800, but the rate of D003 is 1450"); after that the template is used. Staff see which one
+    they got: *Written by AI* or *Plain reply, add a personal line?*
+11. **Chats remember the buyer:** the occasion ("shaadi", "Diwali"), short notes such as their city or deadline,
+    and the designs they turned down, which later suggestions skip.
+12. **It understands more than orders:** questions about fabric ("is it pure silk?"), delivery, COD, returns,
+    blouse piece, minimum order and samples are answered from the catalogue and the `shop:` terms in
+    `config.yaml`; anything else (discounts) is marked *Staff to confirm*. "The second one" or "pehla wala" picks
+    that design; "not this one" shows another; "hi" in the middle of a chat picks up where it left off.
+13. **Templates stay warm when the AI is off:** the buyer's name ("Ramesh ji"), the item and the occasion, three
+    wordings per line (never the one the buyer just got), and no emoji for buyers who write formally.
+
 It **shortlists, it never decides, and nothing reaches a buyer until staff approve it.**
+
+Settings: `llm.compose_replies: false` in `config.yaml` turns the AI-written replies off (templates only), for
+example if Gemini is slow during a demo. Writing a reply never waits for Gemini's per-minute limit; when the
+minute's calls are used up, the template goes out. The `shop:` terms in `config.yaml` are **sample values**:
+change them to your shop's real delivery, payment and return terms.
+
+`python scripts/demo_conversations.py` plays five scripted chats (Hinglish wedding order, Gujarati unit mix-up,
+delivery and COD, a buyer who turns down designs, a rude buyer who then asks a real question) and prints the reply
+before this change next to the reply now. The last run is in [`docs/demo_conversations.md`](docs/demo_conversations.md).
 
 ## How it works
 
@@ -212,9 +239,15 @@ python -m pytest tests -v
 `tests/test_conversation.py` runs multi-turn chats through the same path as real WhatsApp messages: "67 kg" for
 sarees, a plain "67" checked against stock, "67 shit", three "yo bro" in a row, "actually blue", Hinglish, and 40
 turns of nonsense followed by "how many in stock?", emojis/spam/repeats that must never reach the seller, and
-"do you sell shoes?", and Reply to all (the right reply for each buyer, sent once). Every reply is checked for slang and swearing, and for any number
-that isn't in `stock.csv` or in the buyer's own messages. Each script runs with Gemini and again with the AI switched
-off. The tests use a copy of the database.
+"do you sell shoes?", Reply to all (the right reply for each buyer, sent once), "not this one", "the second one",
+"is it pure silk?", COD and discount questions, "bro do you have red saree?" and a "hi" in the middle of an order.
+Every reply is checked for slang and swearing, and for any number that isn't in `stock.csv`, the shop's terms or the
+buyer's own messages. Each script runs with Gemini and again with the AI switched off.
+
+`tests/test_replies.py` uses a fake AI, so it is fast and repeatable: a reply with an invented rate is rejected and
+the template is used, a reply fixed on the retry is used, a reply in the wrong script is rejected, notes the AI
+makes are kept and used later, and every template fills in cleanly with or without the buyer's name. All tests use
+a copy of the database (see `tests/conftest.py`).
 
 ## Accuracy
 
@@ -361,13 +394,14 @@ backend/
                     text_search, check_stock, ask_clarifying_question, draft_reply
     scoring.py      score mix, labels, reasons, shade note
     lexicon.py      keyword list for English / Hinglish / Hindi / Gujarati
-    templates.py    reply and question templates in 4 languages
+    templates.py    reply and question templates in 4 languages (name, item and occasion slots, 3 wordings)
+    reply_guard.py  checks an AI-written reply against stock.csv before staff see it
 frontend/           React + Vite + Tailwind; Inbox / Enquiry / Catalogue / Insights / Log tabs,
                     the buyer chat page (#buyer) and the "How it works" screen
 catalogue/          sample photos, stock.csv, tags.csv, CREDITS.md
 evaluate.py         top-1 / top-5 on test_queries.csv
-tests/              multi-turn chat stress tests (pytest)
-scripts/            sample catalogue fetcher, test query maker, fake WhatsApp sender
+tests/              multi-turn chat stress tests, and reply tests with a fake AI (pytest)
+scripts/            sample catalogue fetcher, test query maker, fake WhatsApp sender, before/after chat demo
 config.yaml         thresholds, weights, vocabulary, Gemini model, upload limits
 docs/PLAN.md        the original build plan and decisions
 ```
