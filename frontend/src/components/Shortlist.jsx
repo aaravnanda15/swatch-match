@@ -25,7 +25,7 @@ function defaultPicks(answer) {
   return closest ? [closest.design_id] : [];
 }
 
-// whatsapp: { enquiryId, status, hoursLeft, buyerName, onSent }, Inbox only
+// whatsapp: { enquiryId, status, hoursLeft, buyerName, draft, onSent }, Inbox only
 export default function Shortlist({ answer, onOpenImage, whatsapp }) {
   const [picked, setPicked] = useState(() => defaultPicks(answer));
 
@@ -114,6 +114,7 @@ export default function Shortlist({ answer, onOpenImage, whatsapp }) {
           picked={pickedInOrder}
           defaultLanguage={answer.query.language}
           whatsapp={whatsapp}
+          draft={whatsapp?.draft}
         />
       )}
 

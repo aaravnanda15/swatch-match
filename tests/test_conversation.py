@@ -20,7 +20,9 @@ def test_1_kg_for_sarees_asks_to_confirm_pieces(mode):
     state = chat.say("67 kg")
     assert state["pending_question"]["expects"] == "confirm_quantity"
     assert state["pending_question"]["value"] == 67
-    assert "67 pieces" in state["last_reply"] and "sold by the piece, not by kg" in state["last_reply"]
+    assert "67" in state["last_reply"] and "piece" in state["last_reply"].lower()
+    if mode == "keywords":
+        assert "sold by the piece, not by kg" in state["last_reply"]
     assert is_red_saree(state) and state["shortlist"] == first["shortlist"]
 
 
@@ -31,13 +33,14 @@ def test_2_plain_number_is_the_quantity_checked_against_stock(mode):
     assert state["quantity"] == 67 and state["unit"] == "piece"
     row = STOCK[state["focus"]]
     available = int(row["quantity_available"])
+    reply = state["last_reply"]  # the AI may word it its own way, but the facts must be there
+    assert row["design_id"] in reply
     if available == 0:
-        assert "out of stock" in state["last_reply"]
+        assert state["pending_question"]["expects"] == "take_available"
     elif available < 67:
-        assert f"only have {available} pieces of {row['design_id']}" in state["last_reply"]
-        assert state["pending_question"]["value"] == available
+        assert str(available) in reply and state["pending_question"]["value"] == available
     else:
-        assert f"{available} pieces" in state["last_reply"]
+        assert str(available) in reply and state["pending_question"]["expects"] == "confirm_order"
 
 
 def test_3_swearing_with_a_number_is_not_an_answer(mode):
@@ -98,7 +101,7 @@ def test_8_forty_turns_of_nonsense_then_a_real_question(mode):
     assert is_red_saree(state)
     for design_id in state["shortlist"][:3]:
         row = STOCK[design_id]
-        assert f"{design_id} {row['name']}: {row['quantity_available']}" in state["last_reply"]
+        assert design_id in state["last_reply"] and row["quantity_available"] in state["last_reply"]
     assert len(state["summary"]) < 300  # the running summary stays short however long the chat gets
 
 
@@ -141,10 +144,11 @@ def test_11_reply_to_all(mode, monkeypatch):
 
     ready = {r["enquiry_id"]: r for r in routes.inbox_ready()["items"]}
     mine = [ready[c.state()["enquiry_id"]] for c in (a, b)]
-    assert "Gold Kanchi Silk Saree" in mine[0]["text"] and mine[0]["picked"]  # the shortlist, with its photos
+    assert mine[0]["picked"] and all(d["design_id"] in mine[0]["text"] for d in mine[0]["picked"])  # the shortlist
     assert mine[0]["said"][-1]["text"] == "lol"  # the seller sees what the buyer said since
     assert any(m["text"] == "10 pcs" for m in mine[1]["said"]) and mine[1]["picked"]
-    assert "Here's what we have for you" in mine[1]["text"]  # the unsent shortlist goes along with the answer
+    # the unsent shortlist goes along with the answer
+    assert all(d["design_id"] in mine[1]["text"] for d in mine[1]["picked"])
 
     items = [routes.SendRequest(enquiry_id=r["enquiry_id"], text=r["text"], language=r["language"],
                                 picked=[d["design_id"] for d in r["picked"]]) for r in mine]

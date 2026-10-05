@@ -13,6 +13,7 @@ import {
   uploadUrl,
 } from "../api.js";
 import { shortDateTime } from "../format.js";
+import DraftNote from "../components/DraftNote.jsx";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import ReplyAll from "../components/ReplyAll.jsx";
@@ -368,6 +369,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
             status: item.status,
             hoursLeft: item.hours_left,
             buyerName: item.buyer_name,
+            draft: item.draft,
             onSent: () => {
               load();
               onChanged();
@@ -570,6 +572,7 @@ function FollowUp({ item, onSent }) {
             aria-label="Suggested reply"
             className="mt-2 w-full resize-y rounded-xl border border-line bg-paper/40 px-3 py-2.5 text-[14px] leading-relaxed focus:border-indigo focus:bg-card focus:outline-none"
           />
+          {text === f.reply && <DraftNote source={f.reply_source} needsStaff={f.needs_staff} />}
           <div className="mt-2 space-y-2">
             <WhatsAppSend
               whatsapp={{ enquiryId: item.id, status: item.status, hoursLeft: item.hours_left, buyerName: item.buyer_name, onSent }}

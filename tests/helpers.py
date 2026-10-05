@@ -51,3 +51,35 @@ def check_reply(reply, buyer_messages):
 
 def is_red_saree(state):
     return state["enquiry"].get("main_colour") == "red" and state["enquiry"].get("garment_type") == "saree"
+
+
+class FakeLLM:
+    """Stands in for Gemini. Each reply is a function of what the composer was given;
+    the message reading falls back to keywords, so the tests are fast and repeatable."""
+
+    name = "fake"
+    available = True
+    last_error = None
+
+    def __init__(self, *replies):
+        self.replies = list(replies)
+        self.calls = []  # (context, problems) for every compose call
+
+    def compose_reply(self, context, problems=()):
+        self.calls.append((context, list(problems)))
+        if not self.replies:
+            return None
+        answer = self.replies.pop(0)(context)
+        return answer if isinstance(answer, dict) else {"reply": answer, "needs_staff": False, "new_memory": []}
+
+    def classify_turn(self, *args):
+        return None
+
+    def parse_text(self, text):
+        return None
+
+    def clarify(self, *args):
+        return None
+
+    def tag_image(self, *args):
+        return None

@@ -1,25 +1,30 @@
 """A WhatsApp chat with one buyer, turn by turn.
 
 The app keeps the state of each chat (table `conversations`) and decides every
-next step; replies come from agent/templates.py with stock and rate read from
-the database. Gemini, when there is a key, only labels the newest message and
-pulls out fields (llm.classify_turn) - and it always gets the state, the
-pending question and the last 6 messages, never the new message alone.
-A keyword classifier does the same job without Gemini.
+next step, with a template reply whose stock and rate come from the database.
+Gemini, when there is a key, labels the newest message (llm.classify_turn) and
+then rewrites the reply in a warmer, personal way (llm.compose_reply). The
+rewrite is only used if agent/reply_guard.py finds nothing wrong with it.
+Without Gemini, a keyword classifier and the templates do the whole job.
 """
 
 import json
+import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 
 from backend import db, enquiries, llm
-from backend.agent import lexicon, templates
+from backend.agent import lexicon, reply_guard, templates
 from backend.config import ATTRIBUTES, CONFIG
+
+log = logging.getLogger("swatch.chat")
 
 INTENTS = ("answer_to_question", "new_or_changed_request", "question_about_shown_designs",
            "greeting", "off_topic", "abusive_or_nonsense")
 ENQUIRY_FIELDS = ("garment_type", "main_colour", "secondary_colour", "pattern", "border", "fabric", "work_type")
 OFF_TOPIC_LIMIT = 3
+HISTORY = 12  # messages of the chat that Gemini sees
 MERGE_SECONDS = CONFIG["whatsapp"]["merge_seconds"]
 
 GREETINGS = {"hi", "hello", "hey", "hii", "hiii", "namaste", "namaskar", "good", "morning", "evening", "afternoon",
@@ -57,7 +62,7 @@ def new_state():
         "quantity": None, "unit": None, "pending_question": None, "stage": "browsing",
         "off_topic_count": 0, "flagged": False, "language": "en", "summary": "",
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
-        "last_buyer_text": "", "filtered_count": 0,
+        "last_buyer_text": "", "filtered_count": 0, "action": None, "reply_source": None, "needs_staff": False,
     }
 
 
@@ -126,9 +131,8 @@ def gemini_classify(state, text, history):
     if not provider.available:
         return None
     pending = (state["pending_question"] or {}).get("text")
-    lines = [f"{'buyer' if m['direction'] == 'in' else 'shop'}: {m['text'] or '[photo]'}" for m in history]
     answer = provider.classify_turn(json.dumps(_state_for_llm(state), ensure_ascii=False), pending,
-                                    "\n".join(lines), text)
+                                    _history_text(history), text)
     if not isinstance(answer, dict) or answer.get("intent") not in INTENTS:
         return None
     attributes = {}
@@ -143,6 +147,10 @@ def gemini_classify(state, text, history):
     if answer.get("language") in templates.TURN:
         fields["language"] = answer["language"]
     return answer["intent"], fields
+
+
+def _history_text(history):
+    return "\n".join(f"{'buyer' if m['direction'] == 'in' else 'shop'}: {m['text'] or '[photo]'}" for m in history)
 
 
 def _state_for_llm(state):
@@ -180,7 +188,8 @@ def classify(state, text, history):
 def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     state = get_state(phone)
     state["turns"] += 1
-    history = db.recent_chat(phone, 7)[:-1]  # the newest message is already stored
+    state["needs_staff"] = False
+    history = db.recent_chat(phone, HISTORY + 1)[:-1]  # the newest message is already stored
 
     normalized = " ".join(text.lower().split())
     if img is not None:
@@ -218,8 +227,11 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         state["flagged"] = False  # a real message un-mutes the chat
     if priority == "filtered":
         state["filtered_count"] += 1
+    source = None
     if priority == "needs_reply" and reply:
-        _set_outbox(state, reply, intent)
+        reply, source = _write_reply(state, name, text, history, reply, intent)
+        _set_outbox(state, reply, intent, source)
+    state["reply_source"] = source
     state["last_intent"] = intent
     state["last_reply"] = reply
     state["last_priority"] = priority
@@ -231,9 +243,103 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         db.set_followup(state["enquiry_id"], {
             "buyer_text": text, "intent": intent, "reply": reply, "read_by": read_by, "priority": priority,
             "filter": fields.get("filter"), "flagged": state["flagged"], "stage": state["stage"],
-            "summary": state["summary"],
+            "summary": state["summary"], "reply_source": source, "needs_staff": state["needs_staff"],
         }, surface=priority == "needs_reply")
-    return {"intent": intent, "reply": reply, "read_by": read_by, "priority": priority, "state": state}
+    return {"intent": intent, "reply": reply, "read_by": read_by, "priority": priority,
+            "reply_source": source, "state": state}
+
+
+# ---------- writing the reply ----------
+
+def _write_reply(state, name, text, history, template, intent):
+    """The AI's version of the template reply, if it passes every check in
+    reply_guard; otherwise the template. Returns (reply, "composed" or "template")."""
+    provider = llm.get_llm()
+    if not (provider.available and CONFIG["llm"].get("compose_replies")):
+        return template, "template"
+    started = time.perf_counter()
+    facts = _facts(state, template)
+    pending = (state["pending_question"] or {}).get("text")
+    context = {
+        "profile": _profile(state, name),
+        "memory": state["summary"] or "nothing yet",
+        "history": _history_text(history) or "(this is the first message)",
+        "message": text or "[photo]",
+        "opening": "This is the first reply in the chat: start with a short greeting." if not history
+                   else "The chat is already going: do not greet again, go straight in.",
+        "action": state["action"] or intent,
+        "template": template,
+        "facts": json.dumps(facts, ensure_ascii=False),
+        "question": f'End with this one question, in your own words: "{pending}"' if pending
+                    else "Do not ask a question; the shop is not waiting on one.",
+        "language": reply_guard.LANGUAGE_NAMES.get(state["language"], "English"),
+        "tone": "",
+    }
+    problems = []
+    for attempt in (1, 2):
+        answer = provider.compose_reply(context, problems)
+        if not isinstance(answer, dict) or not isinstance(answer.get("reply"), str):
+            note = provider.last_error or "no reply from the AI"
+            break
+        reply = answer["reply"].strip()
+        problems = reply_guard.validate_reply(reply, facts, state["language"], template, text)
+        if not problems:
+            state["needs_staff"] = state["needs_staff"] or answer.get("needs_staff") is True
+            _note_in_trace(state, intent, "composed", "checked: every number and design ID is in stock.csv", started)
+            return reply, "composed"
+        note = "; ".join(problems)
+        log.info("AI reply rejected (try %d of 2): %s", attempt, note)
+    _note_in_trace(state, intent, "template", f"plain reply used ({note})", started)
+    return template, "template"
+
+
+def _facts(state, template):
+    """What the AI may say: the designs in play, from the database, and the buyer's numbers."""
+    ids = [state["focus"], *reply_guard.DESIGN_ID.findall(template)]
+    designs = []
+    for design_id in dict.fromkeys(i for i in ids if i):
+        d = db.get_design(design_id)
+        if d is None:
+            continue
+        tags = {k: v for k, v in d["tags"].items() if v not in ("none", "other", "unknown")}
+        designs.append({"design_id": design_id, "name": d["name"], "rate": d["rate"], "unit": d["unit"],
+                        "stock": d["quantity_available"], "garment": tags.get("garment_type"),
+                        "fabric": tags.get("fabric"), "colour": tags.get("main_colour"),
+                        "pattern": tags.get("pattern"), "border": tags.get("border"), "work": tags.get("work_type")})
+    facts = {"designs": designs}
+    if state["quantity"]:
+        facts["buyer_quantity"] = state["quantity"]
+    if (state["pending_question"] or {}).get("value"):
+        facts["quantity_in_question"] = state["pending_question"]["value"]
+    if state["budget"]:
+        facts["buyer_budget_per_piece"] = state["budget"]
+    return facts
+
+
+def _profile(state, name):
+    bits = [f"WhatsApp name {name!r}" if name else "name unknown",
+            f"writes in {reply_guard.LANGUAGE_NAMES.get(state['language'], 'English')}"]
+    if state["stage"] == "done":
+        bits.append("has just placed an order")
+    return ", ".join(bits)
+
+
+def _note_in_trace(state, intent, source, result, started):
+    """Add the writing step to the shortlist's "How this was made" panel (first reply only)."""
+    if intent != "new_or_changed_request" or not state["enquiry_id"]:
+        return
+    enquiry = db.get_enquiry(state["enquiry_id"])
+    answer = enquiry and enquiry["answer"]
+    if not answer:
+        return
+    answer["trace"].append({
+        "step": len(answer["trace"]) + 1, "tool": "compose_reply",
+        "why": "Write the reply in the buyer's language, about what they said",
+        "input": f"plain reply + facts from stock.csv ({state['action']})",
+        "output": f"{'written by AI' if source == 'composed' else 'template'}, {result}",
+        "ms": int((time.perf_counter() - started) * 1000),
+    })
+    db.save_answer(state["enquiry_id"], answer)
 
 
 def _new_request(state, phone, text, img, image_file, buyer, fields):
@@ -249,7 +355,7 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
         if img is None and state["photo_file"] and state["enquiry"]:
             # a change to an earlier photo enquiry ("actually blue"): keep the photo
             img, image_file = enquiries.load_upload(state["photo_file"]), state["photo_file"]
-        query_text = text if img is not None else _compose(state) or text
+        query_text = text if img is not None else _query_text(state) or text
         answer = enquiries.run(query_text, img, image_file, whatsapp=buyer, display_text=text)
     adopt_answer(state, answer)
     lang = state["language"]
@@ -257,20 +363,23 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     if answer["clarifying_question"]:
         state["pending_question"] = {"text": answer["clarifying_question"], "expects": "details"}
         state["stage"] = "browsing"
+        state["action"] = "ask_for_details"
         return answer["clarifying_question"]
     picks = _good_picks(answer)
     if not picks:
         state["pending_question"] = {"text": templates.turn_text(lang, "ask_details"), "expects": "details"}
+        state["action"] = "nothing_in_stock_ask_details"
         return _join(templates.turn_text(lang, "no_more"), state["pending_question"]["text"])
     item, _, _ = templates.item_words(lang, state["enquiry"])
     state["pending_question"] = {"text": templates.turn_text(lang, "ask_quantity", item=item), "expects": "quantity"}
     state["stage"] = "asked_quantity"
     state["quantity"] = state["unit"] = None
     state["reply_picks"] = picks
+    state["action"] = "show_closest_designs" if answer["no_match"] else "show_matching_designs"
     return templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"])
 
 
-def _set_outbox(state, reply, intent):
+def _set_outbox(state, reply, intent, source=None):
     """The reply waiting for the seller's approval (what Reply to all sends). If the
     buyer writes again before the seller has replied, the design photos picked
     for the unsent shortlist still go with the newer reply."""
@@ -283,7 +392,8 @@ def _set_outbox(state, reply, intent):
         if unsent:
             first = previous.get("first") or (previous["text"] if previous.get("intent") == "new_or_changed_request" else None)
     state["outbox"] = {"enquiry_id": state["enquiry_id"], "text": _join_blocks(first, reply), "first": first,
-                       "picked": picks or [], "language": state["language"], "intent": intent}
+                       "picked": picks or [], "language": state["language"], "intent": intent,
+                       "source": source, "needs_staff": state["needs_staff"]}
 
 
 def _join_blocks(*parts):
@@ -332,7 +442,7 @@ def _good_picks(answer):
     return [closest] if closest else []
 
 
-def _compose(state):
+def _query_text(state):
     e = state["enquiry"]
     words = [e.get(a) for a in ("main_colour", "fabric", "pattern", "work_type", "garment_type")]
     text = " ".join(w for w in words if w and w not in ("none", "other", "unknown"))
@@ -383,6 +493,7 @@ def _quantity(state, quantity, unit):
         short = templates.turn_text(lang, "confirm_short", n=n, units=units, item=item)
         state["pending_question"] = {"text": text, "short": short, "expects": "confirm_quantity", "value": n}
         state["stage"] = "confirming"
+        state["action"] = "unit_mismatch"
         return text
     return _stock_check(state, n)
 
@@ -399,12 +510,15 @@ def _stock_check(state, n):
     if available <= 0:
         text = templates.turn_text(lang, "out", **values)
         state["pending_question"] = {"text": text, "expects": "take_available", "value": None}
+        state["action"] = "stock_check_out_of_stock"
     elif n > available:
         text = templates.turn_text(lang, "short", **values)
         state["pending_question"] = {"text": text, "expects": "take_available", "value": available}
+        state["action"] = "stock_check_short"
     else:
         text = templates.turn_text(lang, "in_stock", **values)
         state["pending_question"] = {"text": text, "expects": "confirm_order", "value": n}
+        state["action"] = "stock_check_in_stock"
     return text
 
 
@@ -412,6 +526,7 @@ def _confirmed(state, n):
     design = _focus(state)
     lang = state["language"]
     state["quantity"], state["stage"], state["pending_question"] = n, "done", None
+    state["action"] = "order_confirmed"
     return templates.turn_text(lang, "confirmed", n=n, units=_units(lang, design["unit"], n),
                                name=design["name"], design=design["design_id"])
 
@@ -421,9 +536,13 @@ def _show_similar(state):
     others = [d for d in (db.get_design(i) for i in state["shortlist"] if i != state["focus"])
               if d and d["quantity_available"] > 0]
     if not others:
-        return _join(templates.turn_text(lang, "no_more"), _ask_details(state))
+        text = _join(templates.turn_text(lang, "no_more"), _ask_details(state))
+        state["action"] = "no_other_designs"
+        return text
     state["focus"] = others[0]["design_id"]
-    return _join(_stock_lines(state, [d["design_id"] for d in others[:3]], ask=False), _ask_quantity(state))
+    text = _join(_stock_lines(state, [d["design_id"] for d in others[:3]], ask=False), _ask_quantity(state))
+    state["action"] = "show_similar"
+    return text
 
 
 def _stock_lines(state, design_ids=None, ask=True):
@@ -439,7 +558,9 @@ def _stock_lines(state, design_ids=None, ask=True):
                                          unit=_units(lang, d["unit"], 1),
                                          units=_units(lang, d["unit"], d["quantity_available"])))
     text = "\n".join(lines)
-    return f"{text}\n\n{_pending_or_details(state, short=True)}" if ask else text
+    text = f"{text}\n\n{_pending_or_details(state, short=True)}" if ask else text
+    state["action"] = "answer_stock_question"
+    return text
 
 
 def _ask_quantity(state):
@@ -447,6 +568,7 @@ def _ask_quantity(state):
     text = templates.turn_text(state["language"], "ask_quantity", item=item)
     state["pending_question"] = {"text": text, "expects": "quantity"}
     state["stage"] = "asked_quantity"
+    state["action"] = "ask_quantity"
     return text
 
 
@@ -454,6 +576,7 @@ def _ask_details(state):
     text = templates.turn_text(state["language"], "ask_details")
     state["pending_question"] = {"text": text, "expects": "details"}
     state["stage"] = "browsing"
+    state["action"] = "ask_what_they_want"
     return text
 
 
@@ -462,6 +585,7 @@ def _pending_or_details(state, short=False):
     pending = state["pending_question"]
     if not pending:
         return _ask_details(state)
+    state["action"] = "repeat_our_question"
     return pending.get("short", pending["text"]) if short else pending["text"]
 
 
@@ -505,7 +629,7 @@ WAITING = {
 
 def _summary(state):
     """A few words about the chat so far; replaces the history in long chats."""
-    item = _compose(state) or "nothing specific yet"
+    item = _query_text(state) or "nothing specific yet"
     bits = [f"Buyer wants {item}."]
     if state["shortlist"]:
         bits.append(f"Shown {', '.join(state['shortlist'][:5])}.")

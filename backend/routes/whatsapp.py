@@ -87,6 +87,8 @@ def inbox_ready():
             "picked": [{"design_id": d["design_id"], "name": d["name"], "image_file": d["image_file"]}
                        for d in designs if d],
             "language": out.get("language", "en"),
+            "source": out.get("source"),
+            "needs_staff": out.get("needs_staff", False),
         })
     ready.sort(key=lambda r: r["last_at"])  # oldest waiting first
     return {"items": ready}
@@ -99,12 +101,16 @@ def inbox_item(enquiry_id: int):
     if answer is not None:
         answer["enquiry_id"] = enquiry_id
     fields = ("created_at", "text", "image_file", "mode", "status", "sent_at", "buyer_name", "buyer_phone")
+    # the chat bot's own first reply for this shortlist, so the reply box starts from it
+    out = (db.get_conversation(enquiry["buyer_phone"]) or {}).get("outbox") or {}
+    first_reply = out.get("enquiry_id") == enquiry_id and out.get("intent") == "new_or_changed_request"
     return {
         "id": enquiry_id,
         **{k: enquiry[k] for k in fields},
         "hours_left": round(hours_left(enquiry["buyer_phone"]), 1),
         "answer": answer,
         "followup": enquiry["followup"],
+        "draft": {k: out.get(k) for k in ("text", "picked", "language", "source")} if first_reply else None,
     }
 
 

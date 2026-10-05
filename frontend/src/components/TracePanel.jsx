@@ -10,6 +10,7 @@ const TOOL_NAMES = {
   text_search: "Matched the words to photos",
   narrow_to_lookalikes: "Kept the lookalikes",
   check_stock: "Checked stock and rate",
+  compose_reply: "Wrote the reply",
 };
 
 const SIGNAL_NAMES = { image: "photo", attributes: "details", text: "words" };

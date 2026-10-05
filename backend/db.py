@@ -284,6 +284,11 @@ def update_enquiry(enquiry_id, text, image_file, mode, shortlist, answer):
         )
 
 
+def save_answer(enquiry_id, answer):
+    with connect() as conn:
+        conn.execute("UPDATE enquiries SET answer_json = ? WHERE id = ?", (json.dumps(answer), enquiry_id))
+
+
 def _enquiry_from_row(row):
     enquiry = dict(row)
     enquiry["shortlist"] = json.loads(enquiry.pop("shortlist_json") or "{}")

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getReadyReplies, imageUrl, sendAllWhatsApp, uploadUrl } from "../api.js";
 import { shortDateTime } from "../format.js";
+import DraftNote from "./DraftNote.jsx";
 import Icon from "./Icon.jsx";
 
 // One screen for every chat waiting on the seller: what the buyer said, the
@@ -210,6 +211,7 @@ function ReadyCard({ item, text, onText, skipped, onSkip, result, sending, onSen
             aria-label={`Reply to ${item.buyer_name || "buyer"}`}
             className="field-sizing-content max-h-80 min-h-20 w-full rounded-xl border border-line bg-paper px-2.5 py-2 text-sm text-ink focus:border-indigo focus:outline-none disabled:opacity-70"
           />
+          {!done && text === item.text && <DraftNote source={item.source} needsStaff={item.needs_staff} />}
           {item.picked.length > 0 && (
             <div className="mt-1.5 flex items-center gap-1.5">
               {item.picked.slice(0, 5).map((d) => (

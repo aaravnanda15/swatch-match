@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { approveReply, draftReply } from "../api.js";
 import { copyText } from "../clipboard.js";
+import DraftNote from "./DraftNote.jsx";
 import Icon from "./Icon.jsx";
 import WhatsAppSend from "./WhatsAppSend.jsx";
 
@@ -11,11 +12,12 @@ const LANGUAGES = [
   { id: "gu", label: "ગુજરાતી" },
 ];
 
-export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp }) {
-  const [language, setLanguage] = useState(
-    LANGUAGES.some((l) => l.id === defaultLanguage) ? defaultLanguage : "en"
-  );
+// draft: the reply the chat bot already wrote for these picks (WhatsApp only)
+export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp, draft }) {
+  const startLanguage = draft?.language || defaultLanguage;
+  const [language, setLanguage] = useState(LANGUAGES.some((l) => l.id === startLanguage) ? startLanguage : "en");
   const [text, setText] = useState("");
+  const [source, setSource] = useState(null); // "composed" (AI) or "template"
   const [edited, setEdited] = useState(false); // staff changed the text by hand
   const [stale, setStale] = useState(false); // picks changed after editing
   const [loading, setLoading] = useState(false);
@@ -29,11 +31,20 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp 
       setText("");
       return;
     }
+    if (draft && draft.picked.join(",") === pickedKey && draft.language === language) {
+      setText(draft.text);
+      setSource(draft.source);
+      setEdited(false);
+      setStale(false);
+      lastBuilt.current = `${pickedKey}|${language}`;
+      return;
+    }
     setLoading(true);
     setError("");
     try {
-      const draft = await draftReply(enquiryId, picked, language);
-      setText(draft.text);
+      const built = await draftReply(enquiryId, picked, language);
+      setText(built.text);
+      setSource("template");
       setEdited(false);
       setStale(false);
       setApproved(null);
@@ -116,6 +127,7 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp 
               loading ? "opacity-50" : ""
             }`}
           />
+          {!edited && !loading && <DraftNote source={source} />}
           {stale && (
             <div className="mt-1.5 flex items-center justify-between gap-2 rounded-lg bg-saffron-soft px-2.5 py-1.5 text-xs text-[#6e4a10]">
               Your edits are kept. The picked designs changed.
