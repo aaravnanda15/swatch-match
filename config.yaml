@@ -73,3 +73,38 @@ whatsapp:
   merge_seconds: 120              # photo and text from the same buyer this close together = one enquiry
   max_photos: 5                   # design photos sent with a reply
   reply_window_hours: 24          # WhatsApp only allows free replies this long after the buyer's last message
+
+# Shop terms the chat bot may quote when a buyer asks (delivery, COD, returns...).
+# SAMPLE VALUES for the demo: change them to your shop's real terms. Anything not
+# covered here is left for staff to confirm.
+shop:
+  delivery:
+    en: We deliver across India by courier or transport, usually in 4 to 7 days.
+    hinglish: Hum poore India mein courier ya transport se bhejte hain, aam taur par 4 se 7 din mein.
+    hi: हम पूरे भारत में कूरियर या ट्रांसपोर्ट से भेजते हैं, आम तौर पर 4 से 7 दिन में।
+    gu: અમે આખા ભારતમાં કુરિયર કે ટ્રાન્સપોર્ટથી મોકલીએ છીએ, સામાન્ય રીતે 4 થી 7 દિવસમાં.
+  payment:
+    en: We take UPI or bank transfer, paid in full before dispatch. We don't do cash on delivery.
+    hinglish: Payment UPI ya bank transfer se, dispatch se pehle poora. Cash on delivery nahi hota.
+    hi: पेमेंट UPI या बैंक ट्रांसफ़र से, डिस्पैच से पहले पूरा। कैश ऑन डिलीवरी नहीं होती।
+    gu: પેમેન્ટ UPI કે બેંક ટ્રાન્સફરથી, ડિસ્પેચ પહેલાં પૂરું. કેશ ઓન ડિલિવરી નથી.
+  minimum_order:
+    en: There is no minimum order. You can order even a single piece.
+    hinglish: Koi minimum order nahi hai, ek piece bhi le sakte hain.
+    hi: कोई मिनिमम ऑर्डर नहीं है, एक पीस भी ले सकते हैं।
+    gu: કોઈ મિનિમમ ઓર્ડર નથી, એક પીસ પણ લઈ શકો છો.
+  returns:
+    en: We exchange a piece with a manufacturing defect if you tell us within 7 days of delivery.
+    hinglish: Manufacturing defect ho toh delivery ke 7 din ke andar bataiye, hum badal denge.
+    hi: मैन्युफ़ैक्चरिंग डिफ़ेक्ट हो तो डिलीवरी के 7 दिन के अंदर बताइए, हम बदल देंगे।
+    gu: મેન્યુફેક્ચરિંગ ખામી હોય તો ડિલિવરીના 7 દિવસમાં જણાવો, અમે બદલી આપીશું.
+  blouse_piece:
+    en: Our sarees come with an unstitched blouse piece.
+    hinglish: Hamari sarees ke saath unstitched blouse piece aata hai.
+    hi: हमारी साड़ियों के साथ बिना सिला ब्लाउज़ पीस आता है।
+    gu: અમારી સાડી સાથે સીવ્યા વગરનો બ્લાઉઝ પીસ આવે છે.
+  samples:
+    en: We can send a single piece as a sample at the normal rate before a bulk order.
+    hinglish: Bulk order se pehle ek piece sample ke liye normal rate par bhej sakte hain.
+    hi: बल्क ऑर्डर से पहले एक पीस सैंपल के लिए सामान्य रेट पर भेज सकते हैं।
+    gu: બલ્ક ઓર્ડર પહેલાં એક પીસ સેમ્પલ તરીકે સામાન્ય રેટ પર મોકલી શકીએ.

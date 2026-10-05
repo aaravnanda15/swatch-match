@@ -74,16 +74,28 @@ Newest message from the buyer:
 Answer with ONLY this JSON object:
 {{
   "intent": one of "answer_to_question", "new_or_changed_request",
-            "question_about_shown_designs", "wants_other_designs", "greeting",
-            "off_topic", "abusive_or_nonsense",
+            "question_about_shown_designs", "question_about_product_or_terms",
+            "wants_other_designs", "greeting", "off_topic", "abusive_or_nonsense",
   "quantity": the number of items the buyer wants, or null,
   "unit": the unit the buyer used for that number ("piece", "kg", "metre"...), or null,
   "attributes": {{ only attributes the buyer states or changes in THIS message,
                   values copied exactly from the allowed values below }},
   "budget": the most the buyer will pay per piece, as a number, or null,
-  "language": "en", "hi", "gu" or "hinglish"
+  "language": "en", "hi", "gu" or "hinglish",
+  "refers_to": the design ID the buyer points at ("this one", "the second one",
+               "pehla wala", "D003"), from "shown" in the state (shown[0] is the
+               first one they saw), or null,
+  "topic": for "question_about_product_or_terms", one of "fabric", "delivery",
+           "payment", "minimum_order", "returns", "blouse_piece", "samples",
+           "discount", "other"; otherwise null
 }}
-A short reply like "67" or "50 pcs" right after the shop asked for a quantity
+"question_about_shown_designs" is about stock, rate or availability of designs
+already shown. "question_about_product_or_terms" is any other real question:
+fabric or quality ("is it pure silk?"), blouse piece, delivery, payment or COD,
+minimum order, returns, samples, discounts. A real question is never
+"off_topic", even with slang in it. Fill "refers_to" whenever the buyer points
+at a shown design, whatever the intent; "the second one" or "pehla wala" is a
+position, not a quantity. A short reply like "67" or "50 pcs" right after the shop asked for a quantity
 is "answer_to_question". "actually blue" changes the request
 ("new_or_changed_request"). "not this one", "dusra dikhao" or "show me other
 designs" is "wants_other_designs". Swearing or slang mixed with a number is

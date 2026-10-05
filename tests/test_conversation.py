@@ -185,3 +185,34 @@ def test_14_hi_in_the_middle_of_a_chat_picks_up_where_it_left_off(mode):
     state = chat.say("hi")
     assert state["last_intent"] == "greeting" and state["pending_question"]["expects"] == "quantity"
     assert "red saree" in state["last_reply"] and "How many pieces" in state["last_reply"]
+
+
+def test_15_questions_about_the_product_or_terms_get_an_answer(mode):
+    chat = Chat()
+    chat.say("red saree?")
+    state = chat.say("is it pure silk?")
+    assert state["last_intent"] == "question_about_product_or_terms" and state["last_priority"] == "needs_reply"
+    assert "silk" in state["last_reply"].lower() and state["off_topic_count"] == 0
+    state = chat.say("COD?")
+    assert state["last_intent"] == "question_about_product_or_terms" and not state["needs_staff"]
+    if mode == "keywords":
+        assert "cash on delivery" in state["last_reply"]
+    state = chat.say("discount on 100 pcs?")  # not in the shop's terms: staff decide
+    assert state["needs_staff"] and state["last_priority"] == "needs_reply"
+    assert is_red_saree(state) and not state["flagged"]
+
+
+def test_16_the_second_one_means_the_second_design_shown(mode):
+    chat = Chat()
+    first = chat.say("blue dupatta")
+    assert len(first["shown"]) >= 2
+    state = chat.say("the second one")
+    second = first["shown"][1]
+    assert state["focus"] == second and second in state["last_reply"]
+    assert state["pending_question"]["expects"] == "quantity" and state["quantity"] is None
+
+
+def test_17_slang_does_not_hide_a_real_request(mode):
+    state = Chat().say("bro do you have red saree?")
+    assert state["last_intent"] == "new_or_changed_request" and is_red_saree(state)
+    assert state["last_priority"] == "needs_reply"

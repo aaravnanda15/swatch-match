@@ -105,10 +105,12 @@ def _rupees(value):
     return "₹" + whole
 
 
-def draft_reply(language, designs, no_match=False, min_quantity=None, buyer="", occasion=""):
+def draft_reply(language, designs, no_match=False, min_quantity=None, buyer="", occasion="", greet=True):
     """designs: list of dicts straight from the database (design_id, name, rate, unit, quantity_available)."""
     t = REPLY.get(language, REPLY["en"])
     hello = t["hello_no_match"] if no_match else t["hello"]
+    if not greet:  # a new shortlist in the middle of a chat: no second "Namaste"
+        hello = hello.split("🙏 ", 1)[-1]
     lines = [tidy(hello.format(buyer=buyer, occasion=occasion)), ""]
     for i, d in enumerate(designs, start=1):
         quantity = d["quantity_available"]
@@ -174,6 +176,12 @@ TURN = {
         "closing": ["No problem. Message us whenever you're ready, we're happy to help 🙏",
                     "That's alright {buyer}. Message us whenever you're ready 🙏",
                     "No rush at all. Message us whenever you're ready and we'll take it from there 🙏"],
+        "good_choice": ["Good choice {buyer}!", "Lovely pick!", "Sure {buyer}."],
+        "fabric_answer": ["{name} ({design}) is {fabric}, as per our catalogue.",
+                          "Our catalogue lists {name} ({design}) as {fabric}.", "{name} ({design}) is a {fabric} piece."],
+        "staff_confirm": ["Good question {buyer}. Let me check with the owner and get back to you shortly.",
+                          "I'll confirm that with the owner and reply shortly {buyer}.",
+                          "Let me check that for you and come back shortly."],
         "no_more": ["Sorry, nothing else like this in stock right now.", "Sorry {buyer}, that's all we have like this at the moment.",
                     "Nothing else like this is in stock right now, sorry."],
     },
@@ -218,6 +226,12 @@ TURN = {
                          "Aaiye {buyer}! {item} ka kya socha?"],
         "closing": ["Koi baat nahi. Jab bhi chahiye, message kar dijiye 🙏", "Theek hai {buyer}. Jab ready hon, message kar dijiye 🙏",
                     "Koi jaldi nahi. Jab bhi chahiye, bata dijiye 🙏"],
+        "good_choice": ["Badhiya choice {buyer}!", "Achha design chuna!", "Ji {buyer}."],
+        "fabric_answer": ["{name} ({design}) ka fabric {fabric} hai, catalogue ke hisaab se.",
+                          "Catalogue mein {name} ({design}) {fabric} likha hai.", "{name} ({design}) {fabric} ka hai."],
+        "staff_confirm": ["Achha sawaal {buyer}. Owner se confirm karke thodi der mein batate hain.",
+                          "Yeh owner se pakka karke thodi der mein batate hain {buyer}.",
+                          "Iski jaankari pakki karke jaldi batate hain."],
         "no_more": ["Maaf kijiye, abhi aise aur design stock mein nahi hain.",
                     "Maaf kijiye {buyer}, is tarah ke itne hi design abhi hain.",
                     "Abhi aise aur design stock mein nahi hain, maaf kijiye."],
@@ -260,6 +274,11 @@ TURN = {
                          "स्वागत है {buyer}! {item} के बारे में क्या सोचा?"],
         "closing": ["कोई बात नहीं। जब भी चाहिए, मैसेज कर दीजिए 🙏", "ठीक है {buyer}। जब तैयार हों, मैसेज कर दीजिए 🙏",
                     "कोई जल्दी नहीं। जब भी चाहिए, बता दीजिए 🙏"],
+        "good_choice": ["बढ़िया पसंद {buyer}!", "अच्छा डिज़ाइन चुना!", "जी {buyer}।"],
+        "fabric_answer": ["{name} ({design}) का कपड़ा {fabric} है, हमारे कैटलॉग के हिसाब से।",
+                          "कैटलॉग में {name} ({design}) {fabric} लिखा है।", "{name} ({design}) {fabric} का है।"],
+        "staff_confirm": ["अच्छा सवाल {buyer}। मालिक से पूछकर थोड़ी देर में बताते हैं।",
+                          "यह पक्का करके थोड़ी देर में बताते हैं {buyer}।", "इसकी जानकारी पक्की करके जल्दी बताते हैं।"],
         "no_more": ["माफ़ कीजिए, अभी ऐसे और डिज़ाइन स्टॉक में नहीं हैं।", "माफ़ कीजिए {buyer}, इस तरह के इतने ही डिज़ाइन अभी हैं।",
                     "अभी ऐसे और डिज़ाइन स्टॉक में नहीं हैं, माफ़ कीजिए।"],
     },
@@ -301,6 +320,11 @@ TURN = {
                          "સ્વાગત છે {buyer}! {item} વિશે શું વિચાર્યું?"],
         "closing": ["કોઈ વાંધો નહીં. જ્યારે જોઈએ ત્યારે મેસેજ કરજો 🙏", "બરાબર {buyer}. તૈયાર હો ત્યારે મેસેજ કરજો 🙏",
                     "કોઈ ઉતાવળ નથી. જ્યારે જોઈએ ત્યારે જણાવજો 🙏"],
+        "good_choice": ["સરસ પસંદગી {buyer}!", "સારી ડિઝાઇન પસંદ કરી!", "જી {buyer}."],
+        "fabric_answer": ["{name} ({design}) નું કાપડ {fabric} છે, અમારા કેટલોગ મુજબ.",
+                          "કેટલોગમાં {name} ({design}) {fabric} લખેલું છે.", "{name} ({design}) {fabric} નું છે."],
+        "staff_confirm": ["સારો પ્રશ્ન {buyer}. માલિક સાથે વાત કરીને થોડી વારમાં જણાવીએ છીએ.",
+                          "આ પાક્કું કરીને થોડી વારમાં જણાવીએ {buyer}.", "આની માહિતી પાક્કી કરીને જલ્દી જણાવીએ છીએ."],
         "no_more": ["માફ કરશો, હાલ આવી બીજી ડિઝાઇન સ્ટોકમાં નથી.", "માફ કરશો {buyer}, આ પ્રકારની આટલી જ ડિઝાઇન હાલ છે.",
                     "હાલ આવી બીજી ડિઝાઇન સ્ટોકમાં નથી, માફ કરશો."],
     },

@@ -21,7 +21,7 @@ from backend.config import ATTRIBUTES, CONFIG
 log = logging.getLogger("swatch.chat")
 
 INTENTS = ("answer_to_question", "new_or_changed_request", "question_about_shown_designs",
-           "wants_other_designs", "greeting", "off_topic", "abusive_or_nonsense")
+           "question_about_product_or_terms", "wants_other_designs", "greeting", "off_topic", "abusive_or_nonsense")
 ENQUIRY_FIELDS = ("garment_type", "main_colour", "secondary_colour", "pattern", "border", "fabric", "work_type")
 OFF_TOPIC_LIMIT = 3
 HISTORY = 12  # messages of the chat that Gemini sees
@@ -50,6 +50,29 @@ REJECT = re.compile(r"not (?:this|that|these|those)|n'?t like|another|other (?:o
                     r"something else|more (?:designs|options|photos|pics)|kuch aur|aur dikha|dusr[aie] dikha|"
                     r"doosr[aie] dikha|pasand nahi|nahi pasand|और दिखा|दूसरा दिखा|पसंद नहीं|બીજી બતાવ|બીજું બતાવ|"
                     r"પસંદ નથી", re.IGNORECASE)
+# "the second one", "pehla wala": which of the designs we showed
+ORDINALS = [re.compile(p, re.IGNORECASE) for p in (
+    r"\b(?:first|1st|pehl[aie]|pahl[aie])\b|पहल[ाीे]|પહેલ[ીુા]",
+    r"\b(?:second|2nd)\b|\b(?:dusr|doosr)[aie] (?:wal|waal|val)[aie]\b|दूसर[ाीे] वाल|બીજ[ીુા] વાળ",
+    r"\b(?:third|3rd|teesr[aie]|tisr[aie])\b|तीसर[ाीे]|ત્રીજ[ીુા]",
+)]
+# Questions about the product or the shop's terms, answered from the catalogue and config.yaml
+QUESTION = re.compile(r"\?|\b(?:is it|is this|is the|are they|are these|does it|do you|can you|will you|kya|"
+                      r"hai kya|milega|milegi|included|include|kitne din|kab tak|available)\b|क्या|શું", re.IGNORECASE)
+TOPICS = {topic: re.compile(p, re.IGNORECASE) for topic, p in {
+    "fabric": r"\bpure\b|original|\breal\b|\basli\b|quality|which (?:fabric|material)|kaunsa kapda|"
+              r"शुद्ध|असली|ક્વોલિટી|શુદ્ધ|અસલી",
+    "delivery": r"deliver|courier|shipping|\bship\b|transport|dispatch|parcel|डिलीवरी|कूरियर|ડિલિવરી|કુરિયર",
+    "payment": r"\bcod\b|cash on delivery|payment|\bpay\b|\bupi\b|gpay|paytm|bank transfer|advance|credit|"
+               r"udhaa?r|पेमेंट|भुगतान|પેમેન્ટ",
+    "minimum_order": r"minimum|\bmoq\b|kam se kam|कम से कम|ઓછામાં ઓછા",
+    "returns": r"return|exchange|refund|wapas|vapas|वापस|પાછ",
+    "blouse_piece": r"blouse|ब्लाउज|બ્લાઉઝ",
+    "samples": r"sample|नमूना|સેમ્પલ",
+    "discount": r"discount|best (?:price|rate)|last (?:price|rate)|kam kar|less karo|छूट|डिस्काउंट|ડિસ્કાઉન્ટ",
+}.items()}
+SHOP = CONFIG.get("shop", {})
+
 OCCASION_NOTES = {"wedding": "Buying for a wedding", "festival": "Buying for a festival",
                   "party": "Buying for a party or function"}
 TONE_NOTES = {"formal": ", and formal, because the buyer writes formally",
@@ -73,7 +96,7 @@ def new_state():
         "off_topic_count": 0, "flagged": False, "language": "en", "summary": "",
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
         "last_buyer_text": "", "filtered_count": 0, "action": None, "reply_source": None, "needs_staff": False,
-        "memory": [], "rejected": [], "shown": [], "occasion": None, "name": None, "tone": None,
+        "memory": [], "rejected": [], "shown": [], "occasion": None, "name": None, "tone": None, "chosen": None,
     }
 
 
@@ -91,52 +114,86 @@ def unit_of(word):
 # ---------- reading the message ----------
 
 def keyword_classify(state, text):
-    """(intent, fields, sure). `sure` = no need to ask Gemini."""
+    """(intent, fields, sure). `sure` = a clear case, no need to ask Gemini.
+    When it isn't sure, the result is only used if Gemini can't be reached."""
     low = lexicon.translate_digits(text.lower().strip())
     words = WORD.findall(low)
     expects = (state["pending_question"] or {}).get("expects")
-    fields = {}
 
     if SPAM.search(low):
         return "off_topic", {"filter": "spam"}, True
     if not re.search(r"[a-z0-9ऀ-ॿ઀-૿]", low):
         return "abusive_or_nonsense", {"filter": "noise"}, True  # emojis or symbols only
-    if any(w in lexicon.SWEAR or w in lexicon.SLANG for w in words):
-        return "abusive_or_nonsense", {"filter": "rude"}, True
+    if any(w in lexicon.SWEAR for w in words) or (
+            any(w in lexicon.SLANG for w in words) and all(w in lexicon.SLANG or w in ACK for w in words)):
+        return "abusive_or_nonsense", {"filter": "rude"}, True  # swearing, or nothing but "yo bro"
 
-    number = re.search(r"\d+(?:\.\d+)?", low)
-    if number and expects in ("quantity", "confirm_quantity", "take_available"):
-        rest = WORD.findall(low[number.end():]) + WORD.findall(low[:number.start()])
-        unit = next((w for w in rest if unit_of(w) in UNITS), None)
+    quantity, unit, rest = _number(low)
+    if quantity and expects in ("quantity", "confirm_quantity", "take_available"):
         if all(w in FILLER or unit_of(w) in UNITS for w in rest):
-            fields.update(quantity=float(number.group()), unit=unit)
-            return "answer_to_question", fields, True
+            return "answer_to_question", {"quantity": quantity, "unit": unit}, True
 
     if any(w in NOT_SOLD for w in words) and not lexicon.parse(text)["attributes"]:
         return "off_topic", {"filter": "not_sold"}, True
-    if expects in ("confirm_quantity", "confirm_order", "take_available"):
-        if expects == "take_available" and SIMILAR.search(low):
-            return "answer_to_question", {"choice": "similar"}, True
-        if words and set(words) & YES and not set(words) & NO:
-            return "answer_to_question", {"choice": "yes"}, True
-        if words and set(words) & NO:
-            return "answer_to_question", {"choice": "no"}, True
-
+    yes_no = expects in ("confirm_quantity", "confirm_order", "take_available")
+    if yes_no and expects == "take_available" and SIMILAR.search(low):
+        return "answer_to_question", {"choice": "similar"}, True
+    if yes_no and words and all(w in YES | FILLER | ACK for w in words) and not set(words) & NO:
+        return "answer_to_question", {"choice": "yes"}, True
+    if yes_no and words and all(w in NO | FILLER for w in words):
+        return "answer_to_question", {"choice": "no"}, True
     if words and all(w in ACK for w in words):
         return "off_topic", {"filter": "noise"}, True
+    if words and all(w in GREETINGS for w in words):
+        return "greeting", {}, True
+
+    # not sure from here on: Gemini decides when it can
+    fields = {"refers_to": _referred(state, low)}
+    if yes_no and set(words) & (YES | NO):
+        return "answer_to_question", {**fields, "choice": "no" if set(words) & NO else "yes"}, False
+    topic = _topic(low)
+    if topic:
+        return "question_about_product_or_terms", {**fields, "topic": topic}, False
     parsed = lexicon.parse(text)
     if parsed["attributes"] or parsed["max_rate"]:
-        fields.update(attributes=parsed["attributes"], budget=parsed["max_rate"])
         if state["shortlist"] and STOCK_QUESTION.search(low) and not parsed["attributes"]:
-            return "question_about_shown_designs", {}, True
-        return "new_or_changed_request", fields, False
+            return "question_about_shown_designs", fields, False
+        return "new_or_changed_request", {"attributes": parsed["attributes"], "budget": parsed["max_rate"]}, False
     if state["shortlist"] and STOCK_QUESTION.search(low):
-        return "question_about_shown_designs", fields, True
+        return "question_about_shown_designs", fields, False
     if state["shortlist"] and REJECT.search(low):
         return "wants_other_designs", fields, False
-    if words and all(w in GREETINGS for w in words):
-        return "greeting", fields, True
+    if fields["refers_to"]:
+        return "answer_to_question", {**fields, "quantity": quantity, "unit": unit}, False
     return "off_topic", fields, False
+
+
+def _number(low):
+    """(quantity, unit, other words) for "50 pcs", "२० पीस", "67 kg"."""
+    number = re.search(r"\d+(?:\.\d+)?", low)
+    if not number:
+        return None, None, WORD.findall(low)
+    rest = WORD.findall(low[number.end():]) + WORD.findall(low[:number.start()])
+    unit = next((w for w in rest if unit_of(w) in UNITS), None)
+    return float(number.group()), unit, rest
+
+
+def _referred(state, low):
+    """The shown design the buyer points at: "D003", "the second one", "pehla wala"."""
+    for design_id in re.findall(r"\bd\d+\b", low):
+        if design_id.upper() in state["shortlist"]:
+            return design_id.upper()
+    for position, pattern in enumerate(ORDINALS):
+        if position < len(state["shown"]) and pattern.search(low):
+            return state["shown"][position]
+    return None
+
+
+def _topic(low):
+    """What a question about the product or the shop's terms is about (delivery, COD, fabric...)."""
+    if not QUESTION.search(low):
+        return None
+    return next((topic for topic, pattern in TOPICS.items() if pattern.search(low)), None)
 
 
 def gemini_classify(state, text, history):
@@ -159,6 +216,12 @@ def gemini_classify(state, text, history):
               "unit": str(answer["unit"]) if answer.get("unit") else None}
     if answer.get("language") in templates.TURN:
         fields["language"] = answer["language"]
+    if answer.get("refers_to") in state["shortlist"]:
+        fields["refers_to"] = answer["refers_to"]
+        if not re.search(r"\d", lexicon.translate_digits(text)):
+            fields["quantity"] = None  # "the second one" is a position, not 2 pieces
+    if answer.get("topic") in (*TOPICS, "other"):
+        fields["topic"] = answer["topic"]
     return answer["intent"], fields
 
 
@@ -195,10 +258,12 @@ def classify(state, text, history):
         return intent, fields, "keywords"
     g_intent, g_fields = gemini
     # Gemini can't turn a reply into an answer when nothing was asked
-    if g_intent == "answer_to_question" and not state["pending_question"]:
+    if g_intent == "answer_to_question" and not state["pending_question"] and not g_fields.get("refers_to"):
         g_intent = "off_topic"
     if g_intent == "new_or_changed_request" and not (g_fields["attributes"] or g_fields["budget"]):
         g_fields["attributes"], g_fields["budget"] = fields.get("attributes", {}), fields.get("budget")
+    if g_intent == "question_about_product_or_terms" and not g_fields.get("topic"):
+        g_fields["topic"] = fields.get("topic")
     return g_intent, g_fields, "gemini"
 
 
@@ -223,6 +288,10 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         state["last_buyer_text"] = normalized
     if text and not fields.get("filter"):
         _notice(state, text)
+    pointed = fields.get("refers_to")
+    if pointed in state["shortlist"] and intent != "new_or_changed_request":
+        state["focus"] = pointed
+        state["chosen"] = None if intent == "wants_other_designs" else pointed
 
     if intent == "new_or_changed_request" and text:
         detected = fields.get("language") or lexicon.detect_language(text)
@@ -237,7 +306,9 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     elif intent == "answer_to_question":
         reply = _answer(state, fields)
     elif intent == "question_about_shown_designs":
-        reply = _stock_lines(state)
+        reply = _stock_lines(state, [state["focus"]] if pointed else None)
+    elif intent == "question_about_product_or_terms":
+        reply = _answer_question(state, fields.get("topic"))
     elif intent == "wants_other_designs":
         reply = _show_other(state)
     elif intent == "greeting":
@@ -305,6 +376,7 @@ def _write_reply(state, name, text, history, template, intent):
         answer = provider.compose_reply(context, problems)
         if not isinstance(answer, dict) or not isinstance(answer.get("reply"), str):
             note = provider.last_error or "no reply from the AI"
+            log.info("No AI reply, using the template: %s", note)
             break
         reply = answer["reply"].strip()
         problems = reply_guard.validate_reply(reply, facts, state["language"], template, text)
@@ -348,7 +420,9 @@ def _facts(state, template):
         if d is None:
             continue
         tags = {k: v for k, v in d["tags"].items() if v not in ("none", "other", "unknown")}
-        designs.append({"design_id": design_id, "name": d["name"], "rate": d["rate"], "unit": d["unit"],
+        shown_as = state["shown"].index(design_id) + 1 if design_id in state["shown"] else None
+        designs.append({"design_id": design_id, "shown_as": shown_as, "name": d["name"], "rate": d["rate"],
+                        "unit": d["unit"],
                         "stock": d["quantity_available"], "garment": tags.get("garment_type"),
                         "fabric": tags.get("fabric"), "colour": tags.get("main_colour"),
                         "pattern": tags.get("pattern"), "border": tags.get("border"), "work": tags.get("work_type")})
@@ -359,6 +433,7 @@ def _facts(state, template):
         facts["quantity_in_question"] = state["pending_question"]["value"]
     if state["budget"]:
         facts["buyer_budget_per_piece"] = state["budget"]
+    facts["shop_terms"] = {topic: texts["en"] for topic, texts in SHOP.items()}
     return facts
 
 
@@ -423,7 +498,7 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     state["action"] = "show_closest_designs" if answer["no_match"] else "show_matching_designs"
     text = templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"],
                                  buyer=templates.address(lang, state["name"]),
-                                 occasion=templates.occasion_words(lang, state["occasion"]))
+                                 occasion=templates.occasion_words(lang, state["occasion"]), greet=state["turns"] == 1)
     return _toned(state, text)
 
 
@@ -476,6 +551,7 @@ def adopt_answer(state, answer):
     if not state["enquiry"].get("garment_type") and answer.get("photo_tags"):
         state["enquiry"]["garment_type"] = answer["photo_tags"].get("garment_type")
     state["shortlist"] = [r["design_id"] for r in answer["results"]]
+    state["chosen"] = None
     picks = _good_picks(answer, state["rejected"])
     state["focus"] = picks[0] if picks else None
 
@@ -507,8 +583,12 @@ def _answer(state, fields):
     expects = pending.get("expects")
     choice = fields.get("choice")
 
-    if fields.get("quantity") and expects in ("quantity", "confirm_quantity", "take_available"):
+    if fields.get("quantity") and (expects in ("quantity", "confirm_quantity", "take_available")
+                                   or fields.get("refers_to")):
         return _quantity(state, fields["quantity"], fields.get("unit"))
+    if fields.get("refers_to") and not choice:  # "the second one"
+        lead = _say(state, "good_choice")
+        return _join(lead, _stock_check(state, state["quantity"]) if state["quantity"] else _ask_quantity(state))
     if expects == "confirm_quantity":
         if choice == "yes":
             return _stock_check(state, pending["value"])
@@ -522,6 +602,23 @@ def _answer(state, fields):
             return _confirmed(state, pending["value"])
         return _show_similar(state)
     return _pending_or_details(state, short=True)  # nothing to act on: repeat what we're waiting for
+
+
+def _answer_question(state, topic):
+    """Fabric from the catalogue, delivery, payment and so on from the shop's terms
+    in config.yaml. Anything else is left for staff to confirm."""
+    design = _focus(state)
+    fabric = design and design["tags"].get("fabric")
+    if topic == "fabric" and fabric and fabric != "unknown":
+        answer = _say(state, "fabric_answer", name=design["name"], design=design["design_id"], fabric=fabric)
+    elif topic in SHOP:
+        answer = SHOP[topic].get(state["language"]) or SHOP[topic]["en"]
+    else:
+        answer = _say(state, "staff_confirm")
+        state["needs_staff"] = True
+    text = _join(answer, _pending_or_details(state, short=True))
+    state["action"] = f"answer_question_about_{topic or 'something_not_on_file'}"
+    return text
 
 
 def _focus(state):
@@ -653,6 +750,9 @@ def _say(state, key, **values):
     worded differently from the reply the buyer just got."""
     lang = state["language"]
     item, plural, kind = templates.item_words(lang, state["enquiry"])
+    if state["chosen"] and state["chosen"] == state["focus"]:
+        design = db.get_design(state["chosen"])
+        item = f"{design['name']} ({design['design_id']})" if design else item
     values = {"buyer": templates.address(lang, state["name"]), "item": item, "plural": plural, "kind": kind,
               "occasion": templates.occasion_words(lang, state["occasion"]), **values}
     for i in range(templates.variant_count(lang, key)):

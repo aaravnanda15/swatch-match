@@ -117,7 +117,8 @@ STRAY = re.compile(r"\{|\}| {2}| [,.!?:।]|^[,.]|ji [,.]|for the [?.!]")
 
 def test_every_template_fills_cleanly_with_or_without_a_name():
     values = dict(item="red saree", plural="Sarees", kind="sarees", unit="piece", units="pieces", units_n="pieces",
-                  buyer_unit="kg", n=5, available=8, rate="₹1,450", name="Gold Kanchi Silk Saree", design="D003")
+                  buyer_unit="kg", n=5, available=8, rate="₹1,450", name="Gold Kanchi Silk Saree", design="D003",
+                  fabric="silk")
     for lang, keys in templates.TURN.items():
         for key in keys:
             for v in range(templates.variant_count(lang, key)):

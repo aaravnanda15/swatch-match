@@ -6,6 +6,7 @@ import time
 from conftest import ROOT
 
 from backend import conversation, inbox
+from backend.config import CONFIG
 
 STOCK = {r["design_id"]: r for r in csv.DictReader(open(ROOT / "catalogue" / "stock.csv", encoding="utf-8"))}
 STOCK_NUMBERS = {float(r["quantity_available"]) for r in STOCK.values()} | {float(r["rate"]) for r in STOCK.values()}
@@ -42,11 +43,15 @@ def numbers_in(text):
 
 
 def check_reply(reply, buyer_messages):
+    """No slang, and every number is from stock.csv, the shop's terms or the buyer."""
     words = set(re.findall(r"[a-z]+", reply.lower()))
     assert not words & BANNED, f"slang or swearing in reply: {reply!r}"
     buyer_numbers = set().union(*(numbers_in(m) for m in buyer_messages))
-    unknown = numbers_in(reply) - STOCK_NUMBERS - buyer_numbers
+    unknown = numbers_in(reply) - STOCK_NUMBERS - SHOP_NUMBERS - buyer_numbers
     assert not unknown, f"number not from stock.csv or the buyer: {unknown} in {reply!r}"
+
+
+SHOP_NUMBERS = set().union(*(numbers_in(t) for texts in CONFIG["shop"].values() for t in texts.values()))
 
 
 def is_red_saree(state):
