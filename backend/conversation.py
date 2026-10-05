@@ -33,6 +33,13 @@ YES = {"yes", "y", "yeah", "yep", "haan", "han", "ha", "haa", "ji", "ok", "okay"
 NO = {"no", "nope", "nahi", "nahin", "na", "mat", "नहीं", "ना", "ના", "નહીં"}
 FILLER = {"chahiye", "chahie", "chaiye", "please", "pls", "only", "total", "de", "do", "bhejo", "need", "want", "i",
           "we", "ji", "ok", "of", "the", "it", "them", "sir", "bhai", "chahiye.", "चाहिए", "જોઈએ", "joie", "joiye"}
+# Messages that only cost the seller time: acknowledgements, spam, things the shop doesn't sell
+ACK = {"ok", "okay", "okk", "k", "kk", "hmm", "hmmm", "hm", "acha", "achha", "accha", "oh", "ohh", "thanks", "thank",
+       "you", "thx", "ty", "nice", "cool", "fine", "alright", "hehe", "haha", "zzz"}
+SPAM = re.compile(r"https?://|www\.|\bclick\b|\bearn\b|lottery|\bloan\b|crypto|bitcoin|investment|\bprize\b|"
+                  r"subscribe|\botp\b|forwarded|work from home|\bwon\b", re.IGNORECASE)
+NOT_SOLD = {"shoe", "shoes", "sandal", "sandals", "chappal", "phone", "mobile", "laptop", "car", "bike", "pizza", "food",
+            "watch", "jewellery", "jewelry", "furniture", "tv", "electronics", "medicine", "jeans", "tshirt"}
 STOCK_QUESTION = re.compile(r"how many|in stock|available|\bstock\b|\bprice\b|\brate\b|kitn[aei]|kya rate|"
                             r"कितन|स्टॉक|कीमत|કેટલા|સ્ટોક|ભાવ", re.IGNORECASE)
 SIMILAR = re.compile(r"similar|other|more designs|aur dikha|dusr|milte|और|બીજી|મળતી", re.IGNORECASE)
@@ -54,6 +61,7 @@ def new_state():
         "quantity": None, "unit": None, "pending_question": None, "stage": "browsing",
         "off_topic_count": 0, "flagged": False, "language": "en", "summary": "",
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
+        "last_buyer_text": "", "filtered_count": 0,
     }
 
 
@@ -77,10 +85,12 @@ def keyword_classify(state, text):
     expects = (state["pending_question"] or {}).get("expects")
     fields = {}
 
+    if SPAM.search(low):
+        return "off_topic", {"filter": "spam"}, True
     if not re.search(r"[a-z0-9ऀ-ॿ઀-૿]", low):
-        return "abusive_or_nonsense", fields, True  # emojis or symbols only
+        return "abusive_or_nonsense", {"filter": "noise"}, True  # emojis or symbols only
     if any(w in SWEAR or w in SLANG for w in words):
-        return "abusive_or_nonsense", fields, True
+        return "abusive_or_nonsense", {"filter": "rude"}, True
 
     number = re.search(r"\d+(?:\.\d+)?", low)
     if number and expects in ("quantity", "confirm_quantity", "take_available"):
@@ -90,6 +100,8 @@ def keyword_classify(state, text):
             fields.update(quantity=float(number.group()), unit=unit)
             return "answer_to_question", fields, True
 
+    if any(w in NOT_SOLD for w in words) and not lexicon.parse(text)["attributes"]:
+        return "off_topic", {"filter": "not_sold"}, True
     if expects in ("confirm_quantity", "confirm_order", "take_available"):
         if expects == "take_available" and SIMILAR.search(low):
             return "answer_to_question", {"choice": "similar"}, True
@@ -98,6 +110,8 @@ def keyword_classify(state, text):
         if words and set(words) & NO:
             return "answer_to_question", {"choice": "no"}, True
 
+    if words and all(w in ACK for w in words):
+        return "off_topic", {"filter": "noise"}, True
     parsed = lexicon.parse(text)
     if parsed["attributes"] or parsed["max_rate"]:
         fields.update(attributes=parsed["attributes"], budget=parsed["max_rate"])
@@ -172,10 +186,15 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     state["turns"] += 1
     history = db.recent_chat(phone, 7)[:-1]  # the newest message is already stored
 
+    normalized = " ".join(text.lower().split())
     if img is not None:
         intent, fields, read_by = "new_or_changed_request", {}, "photo"
+    elif normalized and normalized == state.get("last_buyer_text"):
+        intent, fields, read_by = "off_topic", {"filter": "duplicate"}, "keywords"
     else:
         intent, fields, read_by = classify(state, text, history)
+    if text:
+        state["last_buyer_text"] = normalized
 
     lang = state["language"]
     if intent == "new_or_changed_request" and text:
@@ -183,6 +202,9 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         if len(WORD.findall(text.lower())) > 1 or state["turns"] == 1:
             lang = state["language"] = detected
 
+    # needs_reply: shown to the seller as New. low: reply drafted, but it can wait.
+    # filtered: nothing worth the seller's time (no reply, not shown as New).
+    priority = "needs_reply"
     if intent == "new_or_changed_request":
         reply = _new_request(state, phone, text, img, image_file, buyer, fields)
     elif intent == "answer_to_question":
@@ -191,22 +213,29 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         reply = _stock_lines(state)
     elif intent == "greeting":
         reply = _join(templates.turn_text(lang, "greeting"), _pending_or_details(state, short=True))
+        priority = "low"
     else:
-        reply = _off_topic(state)
+        reply, priority = _off_topic(state, fields.get("filter"))
 
-    if intent not in ("off_topic", "abusive_or_nonsense"):
+    if priority == "needs_reply":
         state["off_topic_count"] = 0
+        state["flagged"] = False  # a real message un-mutes the chat
+    if priority == "filtered":
+        state["filtered_count"] += 1
     state["last_intent"] = intent
     state["last_reply"] = reply
+    state["last_priority"] = priority
     state["summary"] = _summary(state)
     db.save_conversation(phone, state)
 
-    if intent != "new_or_changed_request" and state["enquiry_id"]:
+    # filtered messages leave the enquiry exactly as the seller last saw it
+    if intent != "new_or_changed_request" and state["enquiry_id"] and priority != "filtered":
         db.set_followup(state["enquiry_id"], {
-            "buyer_text": text, "intent": intent, "reply": reply, "read_by": read_by,
-            "flagged": state["flagged"], "stage": state["stage"], "summary": state["summary"],
-        })
-    return {"intent": intent, "reply": reply, "read_by": read_by, "state": state}
+            "buyer_text": text, "intent": intent, "reply": reply, "read_by": read_by, "priority": priority,
+            "filter": fields.get("filter"), "flagged": state["flagged"], "stage": state["stage"],
+            "summary": state["summary"],
+        }, surface=priority == "needs_reply")
+    return {"intent": intent, "reply": reply, "read_by": read_by, "priority": priority, "state": state}
 
 
 def _new_request(state, phone, text, img, image_file, buyer, fields):
@@ -309,7 +338,7 @@ def _answer(state, fields):
         if choice == "yes" and pending.get("value"):
             return _confirmed(state, pending["value"])
         return _show_similar(state)
-    return _off_topic(state)
+    return _pending_or_details(state, short=True)  # nothing to act on: repeat what we're waiting for
 
 
 def _focus(state):
@@ -325,7 +354,8 @@ def _quantity(state, quantity, unit):
         lang = state["language"]
         item, plural, _ = templates.item_words(lang, state["enquiry"])
         units = _units(lang, design["unit"], n)
-        text = templates.turn_text(lang, "unit_mismatch", plural=plural, unit=design["unit"], n=n, units=units, item=item)
+        text = templates.turn_text(lang, "unit_mismatch", plural=plural, unit=design["unit"], buyer_unit=unit,
+                                   n=n, units=units, item=item)
         short = templates.turn_text(lang, "confirm_short", n=n, units=units, item=item)
         state["pending_question"] = {"text": text, "short": short, "expects": "confirm_quantity", "value": n}
         state["stage"] = "confirming"
@@ -411,17 +441,25 @@ def _pending_or_details(state, short=False):
     return pending.get("short", pending["text"]) if short else pending["text"]
 
 
-def _off_topic(state):
-    """Stay polite, never copy the buyer's tone, and never touch the enquiry."""
-    state["off_topic_count"] += 1
+def _off_topic(state, kind=None):
+    """(reply, priority). Stay polite, never copy the buyer's tone, never touch the
+    enquiry, and keep anything useless away from the seller."""
     lang = state["language"]
+    if kind == "duplicate":
+        return "", "filtered"  # the reply to the first copy still stands
+    if kind in ("noise", "spam"):
+        return "", "filtered"  # nothing to answer, and not worth a closing line either
+    state["off_topic_count"] += 1
     if state["flagged"]:
-        return ""  # already handed to the owner; no more automatic replies
+        return "", "filtered"  # muted chat: stay quiet until a real message comes
     if state["off_topic_count"] >= OFF_TOPIC_LIMIT:
         state["flagged"] = True
-        return templates.turn_text(lang, "closing")
-    _, _, plural_lower = templates.item_words(lang, state["enquiry"])
-    return _join(templates.turn_text(lang, "redirect", plural_lower=plural_lower), _pending_or_details(state, short=True))
+        return templates.turn_text(lang, "closing"), "low"
+    question = _pending_or_details(state, short=True)
+    if kind == "not_sold":
+        return _join(templates.turn_text(lang, "not_sold"), question), "low"
+    redirect = templates.turn_text(lang, "redirect", variant=state["off_topic_count"] - 1)
+    return _join(redirect, question), "low"
 
 
 def _units(lang, unit, n):
@@ -430,6 +468,15 @@ def _units(lang, unit, n):
 
 def _join(*parts):
     return " ".join(p for p in parts if p)
+
+
+WAITING = {
+    "quantity": "how many pieces",
+    "confirm_quantity": "them to confirm the quantity",
+    "take_available": "if they'll take what's in stock",
+    "confirm_order": "them to confirm the order",
+    "details": "what they're looking for",
+}
 
 
 def _summary(state):
@@ -441,7 +488,7 @@ def _summary(state):
     if state["quantity"]:
         bits.append(f"Quantity {state['quantity']:g} {state['unit'] or ''}.".replace(" .", "."))
     if state["pending_question"]:
-        bits.append(f"Waiting for: {state['pending_question']['expects']}.")
+        bits.append(f"We asked {WAITING.get(state['pending_question']['expects'], 'a question')}.")
     if state["flagged"]:
-        bits.append("Flagged for the owner.")
+        bits.append("Chat muted after off-topic messages.")
     return " ".join(bits)

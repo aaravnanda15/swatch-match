@@ -110,7 +110,7 @@ def test_1_kg_for_sarees_asks_to_confirm_pieces(mode):
     state = chat.say("67 kg")
     assert state["pending_question"]["expects"] == "confirm_quantity"
     assert state["pending_question"]["value"] == 67
-    assert "67 pieces" in state["last_reply"] and "sold per piece" in state["last_reply"]
+    assert "67 pieces" in state["last_reply"] and "sold by the piece, not by kg" in state["last_reply"]
     assert is_red_saree(state) and state["shortlist"] == first["shortlist"]
 
 
@@ -124,7 +124,7 @@ def test_2_plain_number_is_the_quantity_checked_against_stock(mode):
     if available == 0:
         assert "out of stock" in state["last_reply"]
     elif available < 67:
-        assert f"We have {available} pieces of {row['design_id']} in stock" in state["last_reply"]
+        assert f"only have {available} pieces of {row['design_id']}" in state["last_reply"]
         assert state["pending_question"]["value"] == available
     else:
         assert f"{available} pieces" in state["last_reply"]
@@ -139,15 +139,17 @@ def test_3_swearing_with_a_number_is_not_an_answer(mode):
     assert state["enquiry"] == first["enquiry"] and state["shortlist"] == first["shortlist"]
     assert state["pending_question"]["expects"] == "quantity"
     assert "How many pieces of the red saree" in state["last_reply"]
+    assert state["last_priority"] == "low"  # handled by the bot, not pushed to the seller
 
 
 def test_4_three_off_topic_messages_close_and_flag(mode):
     chat = Chat()
-    replies = [chat.say("yo bro")["last_reply"] for _ in range(2)]
-    assert all(r.startswith("I can help with") for r in replies)
-    state = chat.say("yo bro")
+    first = chat.say("yo bro")["last_reply"]
+    second = chat.say("yo bro!")["last_reply"]
+    assert first and second and first != second  # polite, and not the same canned line twice
+    state = chat.say("yo bro??")
     assert state["flagged"] is True
-    assert "Our team will get back to you" in state["last_reply"]
+    assert "Message us whenever you're ready" in state["last_reply"]
 
 
 def test_5_changed_colour_gives_a_new_shortlist(mode):
@@ -188,3 +190,29 @@ def test_8_forty_turns_of_nonsense_then_a_real_question(mode):
         row = STOCK[design_id]
         assert f"{design_id} {row['name']}: {row['quantity_available']}" in state["last_reply"]
     assert len(state["summary"]) < 300  # the running summary stays short however long the chat gets
+
+
+def test_9_time_wasters_never_reach_the_seller(mode):
+    chat = Chat()
+    first = chat.say("red saree?")
+    db.set_status(first["enquiry_id"], "sent")  # staff already replied with the shortlist
+    for text in ["ok", "😂😂", "click here to earn money fast http://spam.example", "hmm", "hmm"]:
+        state = chat.say(text)
+        assert state["last_priority"] == "filtered" and state["last_reply"] == ""
+        assert db.get_enquiry(first["enquiry_id"])["status"] == "sent", f"{text!r} was pushed to the seller"
+    assert state["filtered_count"] >= 5 and is_red_saree(state)
+    state = chat.say("20")
+    assert state["last_priority"] == "needs_reply" and state["quantity"] == 20
+    assert db.get_enquiry(first["enquiry_id"])["status"] == "new"  # a real answer does reach the seller
+
+
+def test_10_things_the_shop_does_not_sell(mode):
+    chat = Chat()
+    first = chat.say("red saree?")
+    state = chat.say("do you sell shoes?")
+    assert "we only deal in sarees, dupattas and fabric" in state["last_reply"].lower()
+    assert state["last_priority"] == "low"
+    assert state["enquiry"] == first["enquiry"] and state["shortlist"] == first["shortlist"]
+    chat.say("67 kg")  # now waiting for a yes/no: "do you sell shoes?" must not count as "yes"
+    state = chat.say("do you sell shoes?")
+    assert "only deal in sarees" in state["last_reply"] and state["quantity"] is None

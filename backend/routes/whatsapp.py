@@ -52,7 +52,7 @@ def inbox_list():
     items = db.list_inbox()
     for item in items:
         item["buyer_phone_masked"] = inbox.mask(item.pop("buyer_phone"))
-    return {"items": items, "new": sum(1 for i in items if i["status"] == "new")}
+    return {"items": items, "new": sum(1 for i in items if i["status"] == "new"), "filtered": db.filtered_total()}
 
 
 @router.get("/inbox/{enquiry_id}")

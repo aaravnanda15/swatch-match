@@ -89,7 +89,12 @@ The design choices that keep it reliable:
   topic, abusive) and pulls out fields as strict JSON, and it always gets the state, the pending question and the
   last 6 messages with it. The app then decides the next step and writes the reply from fixed templates, so stock
   and rate come from `stock.csv` and the tone is always a polite shopkeeper's. Three off-topic messages in a row get
-  one closing line and a "Needs owner" flag. Without Gemini, a keyword classifier does the same job.
+  one closing line, and the chat is muted until the buyer sends something real. Without Gemini, a keyword classifier
+  does the same job.
+- **Time-wasters never reach the seller.** Emoji-only messages, "ok"/"hmm", spam and links, and the same message sent
+  twice get no reply and don't move the chat back to New. Greetings and requests for things the shop doesn't sell get
+  a drafted reply marked "Can wait". Only real business (a request, a quantity, a stock or price question) shows as
+  New. The Inbox shows how many messages were filtered out.
 - **Matching is cheap.** Each catalogue photo is turned into 512 numbers once, at ingest; the server keeps them
   in memory and reloads only when the catalogue changes. A buyer's photo is compared with all of them in one
   matrix multiply (0.1 ms for 30 designs, about 16 ms for 200,000). Only the closest 500 go on to scoring, and the
@@ -202,7 +207,8 @@ python -m pytest tests -v
 
 `tests/test_conversation.py` runs multi-turn chats through the same path as real WhatsApp messages: "67 kg" for
 sarees, a plain "67" checked against stock, "67 shit", three "yo bro" in a row, "actually blue", Hinglish, and 40
-turns of nonsense followed by "how many in stock?". Every reply is checked for slang and swearing, and for any number
+turns of nonsense followed by "how many in stock?", emojis/spam/repeats that must never reach the seller, and
+"do you sell shoes?". Every reply is checked for slang and swearing, and for any number
 that isn't in `stock.csv` or in the buyer's own messages. Each script runs with Gemini and again with the AI switched
 off. The tests use a copy of the database.
 

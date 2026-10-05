@@ -29,6 +29,8 @@ const STATUS = {
 
 export default function InboxPage({ active, onNewCount, demoMode }) {
   const [items, setItems] = useState(null);
+  const [filtered, setFiltered] = useState(0);
+  const [showMuted, setShowMuted] = useState(false);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
   // simulated buyers we're waiting for, so we can open them on arrival
@@ -41,6 +43,7 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
     getInbox()
       .then((data) => {
         setItems(data.items);
+        setFiltered(data.filtered || 0);
         onNewCount(data.new);
         setError("");
         const still = [];
@@ -103,6 +106,13 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
           <p className="mt-1 text-sm text-muted">
             WhatsApp enquiries, already matched. Open one, check it, then reply.
           </p>
+          {filtered > 0 && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-xs text-leaf">
+              <Icon name="check" className="h-3.5 w-3.5" strokeWidth={2.2} />
+              {filtered} time-wasting {filtered === 1 ? "message" : "messages"} filtered out for you (emojis, spam,
+              repeats)
+            </p>
+          )}
         </div>
         {demoMode && <BuyerQR />}
         {demoMode && <DemoPanel onSimulate={simulate} pending={pending} />}
@@ -119,11 +129,36 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
             </p>
           </div>
         ) : (
-          <ul className="divide-y divide-line/70 overflow-hidden rounded-2xl border border-line bg-card">
-            {items.map((item) => (
-              <InboxRow key={item.id} item={item} selected={item.id === openId} onOpen={() => setOpenId(item.id)} />
-            ))}
-          </ul>
+          <>
+            <ul className="divide-y divide-line/70 overflow-hidden rounded-2xl border border-line bg-card">
+              {items
+                .filter((item) => !item.flagged)
+                .map((item) => (
+                  <InboxRow key={item.id} item={item} selected={item.id === openId} onOpen={() => setOpenId(item.id)} />
+                ))}
+            </ul>
+            {items.some((item) => item.flagged) && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowMuted(!showMuted)}
+                  className="flex items-center gap-1 text-xs font-medium text-muted hover:text-ink"
+                >
+                  <Icon name="chevron" className={`h-3.5 w-3.5 transition-transform ${showMuted ? "rotate-90" : ""}`} />
+                  Muted chats ({items.filter((item) => item.flagged).length}): only off-topic messages so far
+                </button>
+                {showMuted && (
+                  <ul className="mt-2 divide-y divide-line/70 overflow-hidden rounded-2xl border border-line bg-card opacity-75">
+                    {items
+                      .filter((item) => item.flagged)
+                      .map((item) => (
+                        <InboxRow key={item.id} item={item} selected={item.id === openId} onOpen={() => setOpenId(item.id)} />
+                      ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -181,8 +216,12 @@ function InboxRow({ item, selected, onOpen }) {
               {item.text || (item.image_file ? "Photo" : "")}
             </span>
             {item.flagged ? (
-              <span className="ml-auto shrink-0 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-semibold text-ink">
-                Needs owner
+              <span className="ml-auto shrink-0 rounded-full bg-line px-2 py-0.5 text-[10px] font-semibold text-muted">
+                Muted
+              </span>
+            ) : item.status !== "new" && item.followup_priority === "low" ? (
+              <span className="ml-auto shrink-0 rounded-full bg-line/70 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                Can wait
               </span>
             ) : (
               <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.style}`}>
@@ -451,6 +490,14 @@ function BuyerQR() {
   );
 }
 
+const FILTER_TEXT = {
+  noise: "Filtered: just an emoji or an \"ok\".",
+  spam: "Filtered: looks like spam or a forward.",
+  duplicate: "Filtered: the same message again; the earlier reply still stands.",
+  muted: "Filtered: this chat is muted after repeated off-topic messages.",
+  rude: "Filtered: an off-topic or rude message.",
+};
+
 const INTENT_TEXT = {
   answer_to_question: "Answer to your question",
   question_about_shown_designs: "Question about the designs",
@@ -473,8 +520,11 @@ function FollowUp({ item, onSent }) {
         <span className="rounded-full bg-indigo-soft px-2 py-0.5 text-[11px] font-semibold text-indigo">
           {INTENT_TEXT[f.intent] || f.intent}
         </span>
+        {f.priority === "low" && (
+          <span className="rounded-full bg-line/70 px-2 py-0.5 text-[11px] font-semibold text-muted">Can wait</span>
+        )}
         {f.flagged && (
-          <span className="rounded-full bg-saffron px-2 py-0.5 text-[11px] font-semibold text-ink">Needs owner</span>
+          <span className="rounded-full bg-line px-2 py-0.5 text-[11px] font-semibold text-muted">Muted</span>
         )}
       </div>
       <p className="mt-1 text-xs text-muted">{f.summary}</p>
@@ -507,7 +557,7 @@ function FollowUp({ item, onSent }) {
         </>
       ) : (
         <p className="mt-2 rounded-xl bg-saffron-soft px-3 py-2 text-sm text-[#6e4a10]">
-          No automatic reply: this chat was handed to you after repeated off-topic messages.
+          {FILTER_TEXT[f.filter] || (f.flagged ? FILTER_TEXT.muted : FILTER_TEXT.noise)} No reply needed.
         </p>
       )}
     </section>

@@ -333,6 +333,7 @@ def list_inbox(limit=100):
             "buyer_name, status, sent_at, "
             "COALESCE(json_extract(followup_json, '$.buyer_text'), text) AS text, "
             "json_extract(followup_json, '$.intent') AS followup_intent, "
+            "json_extract(followup_json, '$.priority') AS followup_priority, "
             "COALESCE(json_extract(followup_json, '$.flagged'), 0) AS flagged "
             "FROM enquiries WHERE source = 'whatsapp' AND is_sample = 0 "
             "ORDER BY last_at DESC, id DESC LIMIT ?",
@@ -341,13 +342,26 @@ def list_inbox(limit=100):
     return [dict(r) for r in rows]
 
 
-def set_followup(enquiry_id, followup):
-    """A later message in the same chat: show it (and the suggested answer) on this enquiry."""
+def set_followup(enquiry_id, followup, surface=True):
+    """A later message in the same chat, with the suggested answer. Only messages
+    that need the seller (surface=True) make the enquiry New again."""
     with connect() as conn:
-        conn.execute(
-            "UPDATE enquiries SET followup_json = ?, status = 'new', updated_at = datetime('now') WHERE id = ?",
-            (json.dumps(followup), enquiry_id),
-        )
+        if surface:
+            conn.execute(
+                "UPDATE enquiries SET followup_json = ?, status = 'new', updated_at = datetime('now') WHERE id = ?",
+                (json.dumps(followup), enquiry_id),
+            )
+        else:
+            conn.execute("UPDATE enquiries SET followup_json = ? WHERE id = ?", (json.dumps(followup), enquiry_id))
+
+
+def filtered_total():
+    """Messages the chat bot kept away from the seller (emojis, spam, repeats...)."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT COALESCE(SUM(json_extract(state_json, '$.filtered_count')), 0) AS n FROM conversations"
+        ).fetchone()
+    return int(row["n"])
 
 
 def get_conversation(phone):
