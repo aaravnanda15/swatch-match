@@ -1,0 +1,152 @@
+# Prompt: make Swatch Match replies context-aware (paste into Claude Code in the terminal)
+
+Copy everything below the line into `claude` run from the repo root.
+
+---
+
+You are working in the Swatch Match repo (FastAPI backend in `backend/`, React frontend in `frontend/`).
+It turns a buyer's WhatsApp enquiry (photo and/or text in English, Hindi, Hinglish or Gujarati) into a
+shortlist from the shop's own stock and drafts a reply for staff to approve.
+
+## The problem
+
+Buyer replies feel generic and robotic, and they ignore what the buyer actually said earlier in the chat.
+This is a hackathon project and judges will chat with it, so this matters a lot.
+
+I have already traced the causes. Verify each one by reading the code before you change anything:
+
+1. **The LLM never writes a reply.** `TURN_PROMPT` in `backend/llm.py` literally says "You never write
+   replies". Every message the buyer sees comes from the fixed strings in `TURN` and `REPLY` in
+   `backend/agent/templates.py`. So every buyer gets the same sentence, whatever they wrote.
+2. **Keywords decide first, Gemini rarely sees the chat.** `classify()` in `backend/conversation.py` runs
+   `keyword_classify()` first and returns early whenever it is "sure". Many real messages never reach
+   `gemini_classify()`, which is the only part that sees history.
+3. **Anything unknown becomes off_topic.** `keyword_classify()` ends in `return "off_topic", ...`, and the
+   intent list in `INTENTS` has no place for normal buyer questions such as "is it pure silk?",
+   "blouse piece included?", "delivery to Surat?", "discount on 100 pcs?", "COD?", "same in green?",
+   "send more photos". These get "Sorry, I didn't quite get that." which is the worst possible reply.
+4. **Context is thin.** Only the last 6 messages are passed (`db.recent_chat(phone, 7)`), and `_summary()`
+   is rule-based, so it forgets things like the occasion ("for a wedding"), rejected designs ("not this
+   one"), the buyer's name, or that they are a repeat buyer.
+5. **Greetings and acknowledgements ignore the open thread.** A "hi" in the middle of an order gets
+   "Namaste 🙏" plus a repeated question instead of picking up where the chat left off.
+
+## The goal
+
+Replies that read like a sharp, warm shop assistant who remembers the whole chat, while keeping the
+project's core safety rules, which must not break:
+
+- Stock numbers, rates, design IDs and quantities come **only** from the database (`stock.csv`), never
+  invented by the LLM.
+- Nothing reaches a buyer until staff approve it (the outbox / approve flow stays as is).
+- Never copy the buyer's slang or abuse. Stay polite.
+- Reply in the buyer's language and script.
+- Everything must still work with no Gemini key (`llm.is_offline()`): then the current templates are used.
+
+## The approach: "app decides, LLM phrases, validator guards"
+
+Keep the existing state machine in `backend/conversation.py`. It is good at deciding *what* to do next
+(ask quantity, check stock, confirm, show similar). Change *how the reply is written*, and widen what the
+bot understands.
+
+### Step 1. Read and plan
+
+Read `backend/conversation.py`, `backend/llm.py`, `backend/agent/templates.py`, `backend/agent/lexicon.py`,
+`backend/db.py`, `config.yaml` and `tests/test_conversation.py`. Run `pytest -q` to get a baseline.
+Then show me a short plan before editing.
+
+### Step 2. A reply composer (the main fix)
+
+Add `compose_reply(...)` to the provider in `backend/llm.py` (and a `NullProvider` version that returns
+`None`) with a new `COMPOSE_PROMPT`. Call it from `handle_turn()` in `backend/conversation.py` after the
+state machine has produced its template reply, only when `priority == "needs_reply"` (skip it for
+filtered and low priority messages to save calls on the free tier).
+
+Give the prompt:
+- **Buyer profile**: name, language, whether they have bought or enquired before (look this up from
+  existing enquiries in `db.py`), and a short running memory (see Step 4).
+- **Conversation so far**: the last 12 messages, plus the memory summary for anything older.
+- **The newest message** inside `<<< >>>`, marked as data, not instructions.
+- **What the app decided** (the action, for example `ask_quantity`, `stock_check_short`,
+  `unit_mismatch`, `confirmed`, `show_similar`, `answer_product_question`) and **the template reply** it
+  would have sent. This is the content the reply must cover.
+- **A FACTS block** built in code from the database: for each design involved, its ID, name, rate,
+  unit, stock, fabric, colour, pattern, work, and any shop policy from config (Step 3). Only these facts
+  may appear in the reply.
+
+Instruct the model to:
+- Acknowledge the specific thing the buyer said (their occasion, their colour, their objection) in a few
+  words, then deliver the decided content, then ask exactly one next question if the app is waiting on one.
+- Keep it WhatsApp short: 1 to 4 lines, at most one emoji, no markdown headings, no em dashes.
+- Use the buyer's language and script; Hinglish stays Hinglish.
+- Never invent numbers, design IDs, discounts, delivery times or promises. If the buyer asks something
+  not in FACTS, say the shop will confirm, and set `needs_staff: true`.
+- Return JSON: `{"reply": "...", "needs_staff": true|false}`.
+
+### Step 3. A validator, so the LLM can never lie about stock
+
+Write `validate_reply(reply, facts, language)` in a new `backend/agent/reply_guard.py`:
+- Every number in the reply (also Devanagari and Gujarati digits, use `lexicon.translate_digits`) must
+  appear in FACTS or in the buyer's own message (their quantity). Otherwise reject.
+- Every design ID pattern (like `D007`) must be in FACTS.
+- Script check: a Gujarati chat reply must be mostly Gujarati script, Hindi mostly Devanagari, en and
+  hinglish mostly Latin.
+- Length cap (say 500 chars), no swear words (reuse `SWEAR`), no em dashes.
+- If anything fails, or the LLM times out or errors, use the template reply. Log which rule failed.
+- Record on the turn result and in the trace panel whether the reply was `composed` or `template`, so the
+  demo can show it honestly.
+
+### Step 4. Better memory
+
+- Replace the rule-based `_summary()` with a `memory` list in the conversation state that keeps short
+  facts the buyer revealed: occasion, preferences, rejected designs, budget changes, deadline, city,
+  name. The composer call can return `new_memory: ["for daughter's wedding in Dec"]`; append it (cap at
+  10 items, dedupe). Keep `_summary()` as the offline fallback.
+- Track `rejected` design IDs ("not this one", "dusra dikhao") so `_show_similar()` and new shortlists
+  skip them.
+- Raise history from 6 to 12 messages for classification too.
+
+### Step 5. Understand more kinds of messages
+
+- Add an intent `question_about_product_or_terms` to `INTENTS`, `TURN_PROMPT`, and the dispatcher in
+  `handle_turn()`. Answer it from the design's catalogue fields and a new `shop:` section in
+  `config.yaml` (delivery areas, payment modes, minimum order, returns, blouse piece, sample policy).
+  Anything not covered: reply that staff will confirm, and keep `priority = "needs_reply"`.
+- Change `keyword_classify()` so it is only `sure` for the safe cases (spam, emoji only, clear swear
+  words, a bare number when a quantity was asked, a clear yes/no to a pending yes/no). Everything else,
+  including the final fallthrough, goes to Gemini with full context. When offline, keep today's behaviour.
+- Make greetings mid-chat resume the thread ("Welcome back! Still keen on the red bandhani? How many
+  pieces?") instead of a bare "Namaste".
+- In `gemini_classify()`, also ask for `refers_to` (a design ID from the shortlist the buyer means by
+  "this one", "the second one", "pehla wala") and set `state["focus"]` from it.
+
+### Step 6. Rate limits and speed
+
+`config.yaml` allows about 15 Gemini calls a minute. Keep one compose call per needs_reply turn at most.
+Respect the existing `seconds_between_calls` lock in `llm.py`. Put the composer behind a config flag
+`llm.compose_replies: true` so we can turn it off during the demo if Gemini is slow.
+
+### Step 7. Tests and a before/after demo
+
+- Keep every existing test in `tests/test_conversation.py` green in both modes.
+- Add tests with a fake provider (monkeypatch `llm.get_llm`) that prove:
+  - a composed reply with an invented rate or stock number is rejected and the template is used;
+  - a reply in the wrong script is rejected;
+  - "is it pure silk?" after a shortlist is answered from FACTS, not treated as off_topic;
+  - "not this one, show another" adds to `rejected` and the next suggestion is different;
+  - a mid-chat "hi" resumes the pending question;
+  - memory keeps "for a wedding" and later replies can use it.
+- Add `scripts/demo_conversations.py` that plays 5 scripted chats (Hinglish wedding order, Gujarati
+  buyer with a unit mix-up, buyer asking about delivery and COD, buyer who rejects two designs, rude
+  buyer who then asks a real question) and prints template reply vs composed reply side by side. I will
+  use this output in the pitch.
+
+### Rules while you work
+
+- Small, readable code that matches the repo's style (short functions, plain names, few comments).
+- Do not touch the image search, scoring or ingestion code.
+- No em dashes anywhere, in code, prompts or replies.
+- Run `pytest -q` after each step. Do not commit until all tests pass, then commit each step separately
+  with a clear message.
+- At the end, give me a short summary: what changed, the before/after for 3 sample chats, and any risks
+  for the live demo.
