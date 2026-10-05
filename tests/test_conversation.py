@@ -70,19 +70,23 @@ def mode(request):
 class Chat:
     """One buyer, talking through the same path as a real WhatsApp message."""
 
-    def __init__(self):
+    def __init__(self, prefix="wamid.TEST"):
         self.phone = "9100" + str(random.randint(10**7, 10**8 - 1))
         self.said = []
+        self.prefix = prefix  # wamid.CHAT = a simulated buyer, so replies never go to Meta
 
     def say(self, text):
         self.said.append(text)
         inbox.handle_message({
-            "id": f"wamid.TEST{time.time_ns()}", "phone": self.phone, "name": "Test Buyer",
+            "id": f"{self.prefix}{time.time_ns()}", "phone": self.phone, "name": "Test Buyer",
             "timestamp": int(time.time()), "type": "text", "original_type": "text", "text": text, "media_id": None,
         })
         state = conversation.get_state(self.phone)
         check_reply(state["last_reply"], self.said)
         return state
+
+    def state(self):
+        return conversation.get_state(self.phone)
 
 
 def numbers_in(text):
@@ -216,3 +220,32 @@ def test_10_things_the_shop_does_not_sell(mode):
     chat.say("67 kg")  # now waiting for a yes/no: "do you sell shoes?" must not count as "yes"
     state = chat.say("do you sell shoes?")
     assert "only deal in sarees" in state["last_reply"] and state["quantity"] is None
+
+
+def test_11_reply_to_all(mode, monkeypatch):
+    from backend import whatsapp
+    from backend.routes import whatsapp as routes
+
+    monkeypatch.setattr(whatsapp, "enabled", lambda: True)
+    a, b = Chat("wamid.CHAT"), Chat("wamid.CHAT")
+    first = a.say("red saree?")
+    a.say("lol")  # must not replace the unsent shortlist reply
+    b.say("blue dupatta")
+    b.say("10 pcs")
+
+    ready = {r["enquiry_id"]: r for r in routes.inbox_ready()["items"]}
+    mine = [ready[c.state()["enquiry_id"]] for c in (a, b)]
+    assert "Gold Kanchi Silk Saree" in mine[0]["text"] and mine[0]["picked"]  # the shortlist, with its photos
+    assert mine[0]["said"][-1]["text"] == "lol"  # the seller sees what the buyer said since
+    assert any(m["text"] == "10 pcs" for m in mine[1]["said"]) and mine[1]["picked"]
+    assert "Here's what we have for you" in mine[1]["text"]  # the unsent shortlist goes along with the answer
+
+    items = [routes.SendRequest(enquiry_id=r["enquiry_id"], text=r["text"], language=r["language"],
+                                picked=[d["design_id"] for d in r["picked"]]) for r in mine]
+    result = routes.whatsapp_send_all(routes.SendAllRequest(items=items))
+    assert result["sent"] == 2
+    assert db.get_enquiry(first["enquiry_id"])["status"] == "sent"
+    left = {r["enquiry_id"] for r in routes.inbox_ready()["items"]}
+    assert not left & {r["enquiry_id"] for r in mine}
+    again = routes.whatsapp_send_all(routes.SendAllRequest(items=items[:1]))
+    assert again["sent"] == 0 and "already sent" in again["results"][0]["error"]  # never sent twice

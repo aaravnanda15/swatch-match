@@ -7,6 +7,7 @@ import {
   imageUrl,
   getInbox,
   getInboxItem,
+  getReadyReplies,
   samplePhotoUrl,
   simulateBuyer,
   uploadUrl,
@@ -14,6 +15,7 @@ import {
 import { shortDateTime } from "../format.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
+import ReplyAll from "../components/ReplyAll.jsx";
 import Shortlist from "../components/Shortlist.jsx";
 import WhatsAppSend from "../components/WhatsAppSend.jsx";
 import { copyText } from "../clipboard.js";
@@ -31,6 +33,8 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
   const [items, setItems] = useState(null);
   const [filtered, setFiltered] = useState(0);
   const [showMuted, setShowMuted] = useState(false);
+  const [readyCount, setReadyCount] = useState(0);
+  const [replyAll, setReplyAll] = useState(false);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
   // simulated buyers we're waiting for, so we can open them on arrival
@@ -44,6 +48,9 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
       .then((data) => {
         setItems(data.items);
         setFiltered(data.filtered || 0);
+        getReadyReplies()
+          .then((ready) => setReadyCount(ready.items.length))
+          .catch(() => {});
         onNewCount(data.new);
         setError("");
         const still = [];
@@ -96,13 +103,39 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
 
   if (error && items === null) return <p className="rounded-xl bg-madder-soft p-3 text-sm text-madder-dark">{error}</p>;
   if (items === null) return <p className="text-sm text-muted">Loading inbox…</p>;
+  if (replyAll)
+    return (
+      <ReplyAll
+        onClose={() => {
+          setReplyAll(false);
+          load();
+        }}
+        onSent={load}
+        onOpenChat={(id) => {
+          setReplyAll(false);
+          setOpenId(id);
+        }}
+      />
+    );
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
       {/* phones: list hidden while an enquiry is open */}
       <div className={`min-w-0 space-y-4 ${openId ? "hidden lg:block" : ""}`}>
         <div>
-          <h2 className="font-display text-2xl font-semibold tracking-tight">Inbox</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-display text-2xl font-semibold tracking-tight">Inbox</h2>
+            {readyCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setReplyAll(true)}
+                className="flex items-center gap-1.5 rounded-xl bg-leaf px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-leaf/90"
+              >
+                <Icon name="send" className="h-4 w-4" />
+                Reply to all ({readyCount})
+              </button>
+            )}
+          </div>
           <p className="mt-1 text-sm text-muted">
             WhatsApp enquiries, already matched. Open one, check it, then reply.
           </p>

@@ -55,6 +55,43 @@ def inbox_list():
     return {"items": items, "new": sum(1 for i in items if i["status"] == "new"), "filtered": db.filtered_total()}
 
 
+@router.get("/inbox/ready")
+def inbox_ready():
+    """Every chat with a reply waiting for the seller, with enough context to approve it
+    without opening the chat. Muted chats and replies already sent are left out."""
+    ready = []
+    for conv in db.list_conversations():
+        state, out = conv["state"], conv["state"].get("outbox")
+        if not out or not out.get("text") or state.get("flagged"):
+            continue
+        enquiry = db.get_enquiry(out["enquiry_id"])
+        if enquiry is None or enquiry["source"] != "whatsapp" or enquiry["status"] != "new":
+            continue
+        chat = db.list_chat(conv["phone"])
+        said = []  # what the buyer sent since our last message
+        for m in reversed(chat):
+            if m["direction"] != "in":
+                break
+            said.insert(0, {"text": m["text"], "image_ref": m["image_ref"]})
+        designs = [db.get_design(d) for d in out["picked"]]
+        ready.append({
+            "enquiry_id": enquiry["id"],
+            "buyer_name": enquiry["buyer_name"],
+            "buyer_phone_masked": inbox.mask(conv["phone"]),
+            "last_at": conv["updated_at"],
+            "hours_left": round(hours_left(conv["phone"]), 1),
+            "said": said[-4:] or [{"text": enquiry["text"], "image_ref": None}],
+            "summary": state.get("summary", ""),
+            "first_reply": not any(m["direction"] == "out" for m in chat),
+            "text": out["text"],
+            "picked": [{"design_id": d["design_id"], "name": d["name"], "image_file": d["image_file"]}
+                       for d in designs if d],
+            "language": out.get("language", "en"),
+        })
+    ready.sort(key=lambda r: r["last_at"])  # oldest waiting first
+    return {"items": ready}
+
+
 @router.get("/inbox/{enquiry_id}")
 def inbox_item(enquiry_id: int):
     enquiry = _whatsapp_enquiry(enquiry_id)
@@ -89,6 +126,10 @@ class SendRequest(BaseModel):
     picked: list[str] = []
     text: str
     language: str = "en"
+
+
+class SendAllRequest(BaseModel):
+    items: list[SendRequest]
 
 
 _send_lock = threading.Lock()  # two quick taps must not send twice
@@ -143,3 +184,16 @@ def whatsapp_send(req: SendRequest):
         "failed_photos": failed,
         "dry_run": whatsapp.dry_run() or simulated,
     }
+
+
+@router.post("/whatsapp/send-all")
+def whatsapp_send_all(req: SendAllRequest):
+    """Reply to all: the seller approved every reply on the list in one go. Each one
+    goes through the same checks as a single send; one failure doesn't stop the rest."""
+    results = []
+    for item in req.items:
+        try:
+            results.append({"enquiry_id": item.enquiry_id, "ok": True, **whatsapp_send(item)})
+        except HTTPException as e:
+            results.append({"enquiry_id": item.enquiry_id, "ok": False, "error": e.detail})
+    return {"results": results, "sent": sum(1 for r in results if r["ok"])}

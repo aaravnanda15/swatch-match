@@ -222,6 +222,8 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         state["flagged"] = False  # a real message un-mutes the chat
     if priority == "filtered":
         state["filtered_count"] += 1
+    if priority == "needs_reply" and reply:
+        _set_outbox(state, reply, intent)
     state["last_intent"] = intent
     state["last_reply"] = reply
     state["last_priority"] = priority
@@ -268,7 +270,33 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     state["pending_question"] = {"text": templates.turn_text(lang, "ask_quantity", item=item), "expects": "quantity"}
     state["stage"] = "asked_quantity"
     state["quantity"] = state["unit"] = None
+    state["reply_picks"] = picks
     return templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"])
+
+
+def _set_outbox(state, reply, intent):
+    """The reply waiting for the seller's approval (what Reply to all sends). If the
+    buyer writes again before the seller has replied, the design photos picked
+    for the unsent shortlist still go with the newer reply."""
+    previous = state.get("outbox") or {}
+    picks = state.pop("reply_picks", None) if intent == "new_or_changed_request" else None
+    first = None  # the unsent shortlist reply, which still has to reach the buyer
+    if picks is None:
+        unsent = previous.get("enquiry_id") == state["enquiry_id"] and _unsent(state["enquiry_id"])
+        picks = previous.get("picked", []) if unsent else []
+        if unsent:
+            first = previous.get("first") or (previous["text"] if previous.get("intent") == "new_or_changed_request" else None)
+    state["outbox"] = {"enquiry_id": state["enquiry_id"], "text": _join_blocks(first, reply), "first": first,
+                       "picked": picks or [], "language": state["language"], "intent": intent}
+
+
+def _join_blocks(*parts):
+    return "\n\n".join(p for p in parts if p)
+
+
+def _unsent(enquiry_id):
+    enquiry = db.get_enquiry(enquiry_id) if enquiry_id else None
+    return bool(enquiry) and enquiry["status"] == "new"
 
 
 def _merge_with_recent(phone, text, img, image_file):

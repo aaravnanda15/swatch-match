@@ -157,3 +157,15 @@ export function chatMessages(phone, after = 0) {
 export function getInboxChat(id) {
   return request(`/api/inbox/${id}/chat`);
 }
+
+export function getReadyReplies() {
+  return request("/api/inbox/ready");
+}
+
+export function sendAllWhatsApp(items) {
+  return request("/api/whatsapp/send-all", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+}

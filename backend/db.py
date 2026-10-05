@@ -355,6 +355,12 @@ def set_followup(enquiry_id, followup, surface=True):
             conn.execute("UPDATE enquiries SET followup_json = ? WHERE id = ?", (json.dumps(followup), enquiry_id))
 
 
+def list_conversations():
+    with connect() as conn:
+        rows = conn.execute("SELECT phone, state_json, updated_at FROM conversations ORDER BY updated_at").fetchall()
+    return [{"phone": r["phone"], "state": json.loads(r["state_json"]), "updated_at": r["updated_at"]} for r in rows]
+
+
 def filtered_total():
     """Messages the chat bot kept away from the seller (emojis, spam, repeats...)."""
     with connect() as conn:

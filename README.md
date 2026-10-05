@@ -95,6 +95,10 @@ The design choices that keep it reliable:
   twice get no reply and don't move the chat back to New. Greetings and requests for things the shop doesn't sell get
   a drafted reply marked "Can wait". Only real business (a request, a quantity, a stock or price question) shows as
   New. The Inbox shows how many messages were filtered out.
+- **Reply to all.** One screen lists every buyer waiting on the seller: what they said since the last reply, a
+  one-line summary of the chat, the reply ready to go (editable) and the design photos that will go with it. Untick
+  anyone to leave them for later, then **Send all** with one confirm. Each reply goes through the same checks as a
+  single send (24-hour window, never sent twice), and muted chats are never included.
 - **Matching is cheap.** Each catalogue photo is turned into 512 numbers once, at ingest; the server keeps them
   in memory and reloads only when the catalogue changes. A buyer's photo is compared with all of them in one
   matrix multiply (0.1 ms for 30 designs, about 16 ms for 200,000). Only the closest 500 go on to scoring, and the
@@ -208,7 +212,7 @@ python -m pytest tests -v
 `tests/test_conversation.py` runs multi-turn chats through the same path as real WhatsApp messages: "67 kg" for
 sarees, a plain "67" checked against stock, "67 shit", three "yo bro" in a row, "actually blue", Hinglish, and 40
 turns of nonsense followed by "how many in stock?", emojis/spam/repeats that must never reach the seller, and
-"do you sell shoes?". Every reply is checked for slang and swearing, and for any number
+"do you sell shoes?", and Reply to all (the right reply for each buyer, sent once). Every reply is checked for slang and swearing, and for any number
 that isn't in `stock.csv` or in the buyer's own messages. Each script runs with Gemini and again with the AI switched
 off. The tests use a copy of the database.
 
