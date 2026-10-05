@@ -113,7 +113,7 @@ export default function InsightsPage({ active, demoMode }) {
             />
           </dl>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
             <MissedDemand data={data} />
             <PerDay perDay={data.per_day} />
           </div>
@@ -175,7 +175,7 @@ function MissedDemand({ data }) {
   const max = Math.max(1, ...data.missed_requests.map((m) => m.count));
   const nothing = data.missed_requests.length === 0 && data.out_of_stock_wanted.length === 0;
   return (
-    <section className="rounded-2xl border border-madder/25 bg-card p-4">
+    <section className="min-w-0 rounded-2xl border border-madder/25 bg-card p-4">
       <h3 className="flex items-center gap-2 font-display text-lg font-semibold tracking-tight">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-madder-soft text-madder">
           <Icon name="trend" className="h-4 w-4" />
@@ -191,7 +191,7 @@ function MissedDemand({ data }) {
           {data.missed_requests.map((m) => (
             <li key={m.request}>
               <div className="flex items-baseline justify-between gap-2 text-sm">
-                <span className="truncate font-medium text-ink first-letter:uppercase">{m.request}</span>
+                <span className="min-w-0 truncate font-medium text-ink first-letter:uppercase">{m.request}</span>
                 <span className="shrink-0 text-xs text-muted tabular-nums">
                   asked {m.count}×{m.budget ? ` · under ${rupees(m.budget)}` : ""}
                 </span>
@@ -237,7 +237,7 @@ function PerDay({ perDay }) {
   const label = (iso, short) =>
     new Date(`${iso}T12:00:00`).toLocaleDateString("en-IN", short ? { weekday: "short" } : { weekday: "long", day: "numeric", month: "short" });
   return (
-    <section className="rounded-2xl border border-line bg-card p-4">
+    <section className="min-w-0 rounded-2xl border border-line bg-card p-4">
       <h3 className="font-display text-lg font-semibold tracking-tight">Enquiries per day</h3>
       <div className="mt-4 flex h-40 items-end gap-2" role="list">
         {perDay.map((d, i) => (

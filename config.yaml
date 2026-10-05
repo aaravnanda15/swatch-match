@@ -12,7 +12,7 @@ embeddings:
 llm:
   provider: gemini                # "gemini" or "none" (forces fallback mode)
   model: gemini-3.5-flash-lite    # change here if Google renames models (bigger flash models were overloaded)
-  timeout_seconds: 20
+  timeout_seconds: 10             # Gemini's minimum; normal calls take 1-3 s, so fail fast if it is overloaded
   seconds_between_calls: 4      # free tier allows ~15 calls/minute
 
 uploads:
