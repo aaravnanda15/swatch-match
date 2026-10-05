@@ -21,10 +21,11 @@ from backend.config import ATTRIBUTES, CONFIG
 log = logging.getLogger("swatch.chat")
 
 INTENTS = ("answer_to_question", "new_or_changed_request", "question_about_shown_designs",
-           "greeting", "off_topic", "abusive_or_nonsense")
+           "wants_other_designs", "greeting", "off_topic", "abusive_or_nonsense")
 ENQUIRY_FIELDS = ("garment_type", "main_colour", "secondary_colour", "pattern", "border", "fabric", "work_type")
 OFF_TOPIC_LIMIT = 3
 HISTORY = 12  # messages of the chat that Gemini sees
+MEMORY_SIZE = 10  # short notes about the buyer ("Buying for a wedding")
 MERGE_SECONDS = CONFIG["whatsapp"]["merge_seconds"]
 
 GREETINGS = {"hi", "hello", "hey", "hii", "hiii", "namaste", "namaskar", "good", "morning", "evening", "afternoon",
@@ -44,6 +45,13 @@ NOT_SOLD = {"shoe", "shoes", "sandal", "sandals", "chappal", "phone", "mobile", 
 STOCK_QUESTION = re.compile(r"how many|in stock|available|\bstock\b|\bprice\b|\brate\b|kitn[aei]|kya rate|"
                             r"कितन|स्टॉक|कीमत|કેટલા|સ્ટોક|ભાવ", re.IGNORECASE)
 SIMILAR = re.compile(r"similar|other|more designs|aur dikha|dusr|milte|और|બીજી|મળતી", re.IGNORECASE)
+# "not this one", "dusra dikhao": the buyer turns down a design they were shown
+REJECT = re.compile(r"not (?:this|that|these|those)|n'?t like|another|other (?:one|design|option|colou?r)s?|"
+                    r"something else|more (?:designs|options|photos|pics)|kuch aur|aur dikha|dusr[aie] dikha|"
+                    r"doosr[aie] dikha|pasand nahi|nahi pasand|और दिखा|दूसरा दिखा|पसंद नहीं|બીજી બતાવ|બીજું બતાવ|"
+                    r"પસંદ નથી", re.IGNORECASE)
+OCCASION_NOTES = {"wedding": "Buying for a wedding", "festival": "Buying for a festival",
+                  "party": "Buying for a party or function"}
 UNITS = {
     "piece": {"pc", "pcs", "piece", "pieces", "nos", "no", "nag", "पीस", "नग", "પીસ", "નંગ",
               "saree", "sarees", "sari", "saris", "dupatta", "dupattas"},
@@ -63,11 +71,12 @@ def new_state():
         "off_topic_count": 0, "flagged": False, "language": "en", "summary": "",
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
         "last_buyer_text": "", "filtered_count": 0, "action": None, "reply_source": None, "needs_staff": False,
+        "memory": [], "rejected": [], "shown": [], "occasion": None,
     }
 
 
 def get_state(phone):
-    return db.get_conversation(phone) or new_state()
+    return {**new_state(), **(db.get_conversation(phone) or {})}  # older chats lack the newer keys
 
 
 def unit_of(word):
@@ -121,6 +130,8 @@ def keyword_classify(state, text):
         return "new_or_changed_request", fields, False
     if state["shortlist"] and STOCK_QUESTION.search(low):
         return "question_about_shown_designs", fields, True
+    if state["shortlist"] and REJECT.search(low):
+        return "wants_other_designs", fields, False
     if words and all(w in GREETINGS for w in words):
         return "greeting", fields, True
     return "off_topic", fields, False
@@ -154,9 +165,15 @@ def _history_text(history):
 
 
 def _state_for_llm(state):
-    """The state without the bookkeeping, small enough for every call."""
-    keep = ("enquiry", "budget", "shortlist", "quantity", "unit", "stage", "summary")
-    return {k: state[k] for k in keep}
+    """The state without the bookkeeping, small enough for every call. The notes
+    about the buyer stand in for the rule-based summary once there are some."""
+    keep = ("enquiry", "budget", "shortlist", "shown", "focus", "rejected", "quantity", "unit", "stage")
+    small = {k: state[k] for k in keep}
+    if state["memory"]:
+        small["memory"] = state["memory"]
+    else:
+        small["summary"] = state["summary"]
+    return small
 
 
 def _positive(value):
@@ -216,6 +233,8 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         reply = _answer(state, fields)
     elif intent == "question_about_shown_designs":
         reply = _stock_lines(state)
+    elif intent == "wants_other_designs":
+        reply = _show_other(state)
     elif intent == "greeting":
         reply = _join(templates.turn_text(lang, "greeting"), _pending_or_details(state, short=True))
         priority = "low"
@@ -227,6 +246,9 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         state["flagged"] = False  # a real message un-mutes the chat
     if priority == "filtered":
         state["filtered_count"] += 1
+    elif text and lexicon.find_occasion(text):
+        state["occasion"] = lexicon.find_occasion(text)
+        _remember(state, [OCCASION_NOTES[state["occasion"]]])
     source = None
     if priority == "needs_reply" and reply:
         reply, source = _write_reply(state, name, text, history, reply, intent)
@@ -243,7 +265,8 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         db.set_followup(state["enquiry_id"], {
             "buyer_text": text, "intent": intent, "reply": reply, "read_by": read_by, "priority": priority,
             "filter": fields.get("filter"), "flagged": state["flagged"], "stage": state["stage"],
-            "summary": state["summary"], "reply_source": source, "needs_staff": state["needs_staff"],
+            "summary": state["summary"], "memory": state["memory"], "reply_source": source,
+            "needs_staff": state["needs_staff"],
         }, surface=priority == "needs_reply")
     return {"intent": intent, "reply": reply, "read_by": read_by, "priority": priority,
             "reply_source": source, "state": state}
@@ -262,7 +285,7 @@ def _write_reply(state, name, text, history, template, intent):
     pending = (state["pending_question"] or {}).get("text")
     context = {
         "profile": _profile(state, name),
-        "memory": state["summary"] or "nothing yet",
+        "memory": "; ".join(state["memory"]) or state["summary"] or "nothing yet",
         "history": _history_text(history) or "(this is the first message)",
         "message": text or "[photo]",
         "opening": "This is the first reply in the chat: start with a short greeting." if not history
@@ -285,6 +308,7 @@ def _write_reply(state, name, text, history, template, intent):
         problems = reply_guard.validate_reply(reply, facts, state["language"], template, text)
         if not problems:
             state["needs_staff"] = state["needs_staff"] or answer.get("needs_staff") is True
+            _remember(state, answer.get("new_memory"))
             _note_in_trace(state, intent, "composed", "checked: every number and design ID is in stock.csv", started)
             return reply, "composed"
         note = "; ".join(problems)
@@ -293,9 +317,20 @@ def _write_reply(state, name, text, history, template, intent):
     return template, "template"
 
 
+def _remember(state, notes):
+    if not isinstance(notes, list):
+        return
+    memory = state["memory"]
+    for note in notes:
+        note = str(note).strip()[:100]
+        if note and note.lower() not in {m.lower() for m in memory}:
+            memory.append(note)
+    del memory[:-MEMORY_SIZE]
+
+
 def _facts(state, template):
     """What the AI may say: the designs in play, from the database, and the buyer's numbers."""
-    ids = [state["focus"], *reply_guard.DESIGN_ID.findall(template)]
+    ids = [state["focus"], *state["shown"], *reply_guard.DESIGN_ID.findall(template)]
     designs = []
     for design_id in dict.fromkeys(i for i in ids if i):
         d = db.get_design(design_id)
@@ -359,13 +394,13 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
         answer = enquiries.run(query_text, img, image_file, whatsapp=buyer, display_text=text)
     adopt_answer(state, answer)
     lang = state["language"]
+    picks = _good_picks(answer, state["rejected"])
 
     if answer["clarifying_question"]:
         state["pending_question"] = {"text": answer["clarifying_question"], "expects": "details"}
         state["stage"] = "browsing"
         state["action"] = "ask_for_details"
         return answer["clarifying_question"]
-    picks = _good_picks(answer)
     if not picks:
         state["pending_question"] = {"text": templates.turn_text(lang, "ask_details"), "expects": "details"}
         state["action"] = "nothing_in_stock_ask_details"
@@ -374,7 +409,7 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
     state["pending_question"] = {"text": templates.turn_text(lang, "ask_quantity", item=item), "expects": "quantity"}
     state["stage"] = "asked_quantity"
     state["quantity"] = state["unit"] = None
-    state["reply_picks"] = picks
+    state["reply_picks"] = state["shown"] = picks
     state["action"] = "show_closest_designs" if answer["no_match"] else "show_matching_designs"
     return templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"])
 
@@ -428,18 +463,19 @@ def adopt_answer(state, answer):
     if not state["enquiry"].get("garment_type") and answer.get("photo_tags"):
         state["enquiry"]["garment_type"] = answer["photo_tags"].get("garment_type")
     state["shortlist"] = [r["design_id"] for r in answer["results"]]
-    picks = _good_picks(answer)
+    picks = _good_picks(answer, state["rejected"])
     state["focus"] = picks[0] if picks else None
 
 
-def _good_picks(answer):
+def _good_picks(answer, skip=()):
+    """Up to 3 good matches in stock (designs the buyer turned down are skipped)."""
     if answer["clarifying_question"]:
         return []
-    good = [r["design_id"] for r in answer["results"] if r["in_stock"] and r["label"] in ("very_close", "similar")]
+    fresh = [r for r in answer["results"] if r["in_stock"] and r["design_id"] not in skip]
+    good = [r["design_id"] for r in fresh if r["label"] in ("very_close", "similar")]
     if good:
         return good[:3]
-    closest = next((r["design_id"] for r in answer["results"] if r["in_stock"]), None)
-    return [closest] if closest else []
+    return [fresh[0]["design_id"]] if fresh else []
 
 
 def _query_text(state):
@@ -531,16 +567,26 @@ def _confirmed(state, n):
                                name=design["name"], design=design["design_id"])
 
 
+def _show_other(state):
+    """The buyer turned down the design we were talking about ("not this one")."""
+    if state["focus"] and state["focus"] not in state["rejected"]:
+        state["rejected"].append(state["focus"])
+    return _show_similar(state)
+
+
 def _show_similar(state):
     lang = state["language"]
-    others = [d for d in (db.get_design(i) for i in state["shortlist"] if i != state["focus"])
+    skip = {state["focus"], *state["rejected"]}
+    others = [d for d in (db.get_design(i) for i in state["shortlist"] if i not in skip)
               if d and d["quantity_available"] > 0]
+    others.sort(key=lambda d: d["design_id"] in state["shown"])  # ones they haven't seen first
     if not others:
         text = _join(templates.turn_text(lang, "no_more"), _ask_details(state))
         state["action"] = "no_other_designs"
         return text
     state["focus"] = others[0]["design_id"]
-    text = _join(_stock_lines(state, [d["design_id"] for d in others[:3]], ask=False), _ask_quantity(state))
+    state["shown"] = [d["design_id"] for d in others[:3]]
+    text = _join(_stock_lines(state, state["shown"], ask=False), _ask_quantity(state))
     state["action"] = "show_similar"
     return text
 

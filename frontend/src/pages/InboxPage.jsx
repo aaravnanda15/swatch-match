@@ -536,6 +536,7 @@ const FILTER_TEXT = {
 const INTENT_TEXT = {
   answer_to_question: "Answer to your question",
   question_about_shown_designs: "Question about the designs",
+  wants_other_designs: "Wants other designs",
   greeting: "Greeting",
   off_topic: "Off topic",
   abusive_or_nonsense: "Off topic / rude",
@@ -563,6 +564,7 @@ function FollowUp({ item, onSent }) {
         )}
       </div>
       <p className="mt-1 text-xs text-muted">{f.summary}</p>
+      {f.memory?.length > 0 && <p className="mt-0.5 text-xs text-indigo">Remembers: {f.memory.join(" · ")}</p>}
       {f.reply ? (
         <>
           <textarea

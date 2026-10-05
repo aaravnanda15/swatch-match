@@ -90,6 +90,15 @@ SWEAR = {"shit", "fuck", "fucking", "fck", "damn", "bitch", "bastard", "asshole"
          "kamina", "harami", "gandu", "idiot", "stupid", "dumb"}
 SLANG = {"yo", "bro", "bruh", "dude", "lol", "lmao", "rofl", "sup", "yolo", "bae", "fam", "lit", "meh"}
 
+# Why the buyer is buying, so replies can mention it ("for the wedding")
+OCCASIONS = {
+    "wedding": ["wedding", "marriage", "shaadi", "shadi", "vivah", "lagan", "lagna", "reception",
+                "शादी", "विवाह", "लगन", "લગ્ન"],
+    "festival": ["festival", "diwali", "navratri", "garba", "eid", "pongal", "onam", "teej", "karwa chauth",
+                 "durga puja", "tyohar", "त्योहार", "दिवाली", "नवरात्रि", "તહેવાર", "દિવાળી", "નવરાત્રી"],
+    "party": ["party", "function", "sangeet", "पार्टी", "फंक्शन", "પાર્ટી", "પ્રસંગ"],
+}
+
 # Hindi and Gujarati digits -> 0-9, so "२०००" and "૨૦૦૦" read as 2000
 DIGITS = str.maketrans("०१२३४५६७८९૦૧૨૩૪૫૬૭૮૯", "01234567890123456789")
 
@@ -177,6 +186,11 @@ def detect_language(text):
     if hits >= 2 or (hits == 1 and len(words) <= 3):
         return "hinglish"
     return "en"
+
+
+def find_occasion(text):
+    lower = text.lower()
+    return next((o for o, words in OCCASIONS.items() if any(_positions(lower, w) for w in words)), None)
 
 
 # "net price" / "net rate" is about money, not net fabric

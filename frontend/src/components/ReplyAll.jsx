@@ -199,6 +199,7 @@ function ReadyCard({ item, text, onText, skipped, onSkip, result, sending, onSen
             ))}
           </div>
           {item.summary && <p className="mt-1.5 text-xs text-muted">{item.summary}</p>}
+          {item.memory?.length > 0 && <p className="mt-0.5 text-xs text-indigo">Remembers: {item.memory.join(" · ")}</p>}
         </div>
 
         <div className="min-w-0">

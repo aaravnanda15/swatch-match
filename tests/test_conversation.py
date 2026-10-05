@@ -159,3 +159,21 @@ def test_11_reply_to_all(mode, monkeypatch):
     assert not left & {r["enquiry_id"] for r in mine}
     again = routes.whatsapp_send_all(routes.SendAllRequest(items=items[:1]))
     assert again["sent"] == 0 and "already sent" in again["results"][0]["error"]  # never sent twice
+
+
+def test_12_not_this_one_shows_something_else(mode):
+    chat = Chat()
+    first = chat.say("red saree?")
+    state = chat.say("not this one, show me another")
+    assert state["last_intent"] == "wants_other_designs"
+    assert state["rejected"] == [first["focus"]]
+    assert state["focus"] and state["focus"] != first["focus"] and state["focus"] in state["last_reply"]
+
+
+def test_13_memory_keeps_the_occasion(mode):
+    chat = Chat()
+    chat.say("red saree for my daughter's wedding")
+    chat.say("20")
+    state = chat.say("how many in stock?")
+    assert "Buying for a wedding" in state["memory"] and state["occasion"] == "wedding"
+    assert is_red_saree(state)

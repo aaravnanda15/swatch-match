@@ -95,3 +95,13 @@ def test_no_ai_reply_when_switched_off(fake, monkeypatch):
     ai = fake(lambda c: "never used")
     state = Chat().say("red saree?")
     assert state["reply_source"] == "template" and not ai.calls
+
+
+def test_notes_from_the_ai_are_remembered_and_used_later(fake):
+    note = "Daughter's wedding in December"
+    ai = fake(lambda c: {"reply": "Congratulations! " + c["template"], "needs_staff": False, "new_memory": [note]},
+              lambda c: c["template"])
+    chat = Chat()
+    chat.say("red saree for my daughter's wedding in december")
+    chat.say("20")
+    assert note in chat.state()["memory"] and note in ai.calls[-1][0]["memory"]

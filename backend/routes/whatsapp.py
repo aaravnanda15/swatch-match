@@ -82,6 +82,7 @@ def inbox_ready():
             "hours_left": round(hours_left(conv["phone"]), 1),
             "said": said[-4:] or [{"text": enquiry["text"], "image_ref": None}],
             "summary": state.get("summary", ""),
+            "memory": state.get("memory", []),
             "first_reply": not any(m["direction"] == "out" for m in chat),
             "text": out["text"],
             "picked": [{"design_id": d["design_id"], "name": d["name"], "image_file": d["image_file"]}
