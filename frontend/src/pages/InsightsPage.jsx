@@ -3,7 +3,7 @@ import { addSampleHistory, clearSampleHistory, getInsights, imageUrl } from "../
 import { rupees } from "../format.js";
 import Icon from "../components/Icon.jsx";
 
-// Real-world colour of each fabric colour name, for the small swatches
+// swatch colours
 const SWATCH = {
   red: "#c62828", maroon: "#7b1f2a", pink: "#e75a9b", orange: "#ef7d22", yellow: "#f2c230",
   gold: "#c9a227", green: "#2e8b57", blue: "#2f5fc4", navy: "#1f2b5c", purple: "#6b3fa0",
@@ -14,8 +14,6 @@ const LANGUAGE_NAMES = { en: "English", hi: "हिंदी", hinglish: "Hingli
 
 const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)}%`);
 
-// What the shop's enquiries say: how fast staff reply, what buyers want,
-// and what they want that the shop does not have (missed demand).
 export default function InsightsPage({ active, demoMode }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -97,7 +95,6 @@ export default function InsightsPage({ active, demoMode }) {
         </div>
       ) : (
         <>
-          {/* Headline numbers */}
           <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Stat label="Enquiries" value={data.total} note={`${data.on_whatsapp} on WhatsApp`} />
             <Stat label="Replied" value={pct(data.reply_rate)} note={`${data.replied} of ${data.total} approved`} />
@@ -231,7 +228,6 @@ function MissedDemand({ data }) {
   );
 }
 
-// Enquiries per day: one series, so no legend; hover or focus a bar for its value
 function PerDay({ perDay }) {
   const max = Math.max(1, ...perDay.map((d) => d.count));
   const label = (iso, short) =>
@@ -248,7 +244,6 @@ function PerDay({ perDay }) {
             aria-label={`${label(d.date)}: ${d.count} enquiries`}
             className="group relative flex h-full flex-1 flex-col items-center justify-end focus:outline-none"
           >
-            {/* Tooltip */}
             <span
               className={`pointer-events-none absolute -top-1 z-10 -translate-y-full rounded-md bg-ink px-2 py-1 text-[11px] whitespace-nowrap text-white opacity-0 shadow transition-opacity group-hover:opacity-100 group-focus:opacity-100 ${
                 i < 2 ? "left-0" : i > perDay.length - 3 ? "right-0" : ""

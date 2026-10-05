@@ -1,7 +1,4 @@
-"""The agent's tools. Each one does a single job and returns plain data.
-The orchestrator decides which to call and logs every call to the trace.
-
-"""
+"""The agent's tools."""
 
 import numpy as np
 
@@ -19,8 +16,7 @@ def encode_photo(img):
 
 
 def image_search(query_vector):
-    """Compare the buyer's photo with every catalogue photo.
-    Returns {design_id: similarity 0-1}."""
+    """Compare the buyer's photo with every catalogue photo."""
     ids, matrix = db.load_embeddings()
     if not ids:
         return {}
@@ -29,11 +25,7 @@ def image_search(query_vector):
 
 
 def parse_text_to_attributes(text):
-    """Read the buyer's message. When Gemini answers, its reading is used as is
-    (it understands "red nahi chahiye" and misspellings, which the keyword list
-    gets wrong). The keyword list does the job when Gemini is off or fails.
-
-    Returns {"attributes", "max_rate", "min_quantity", "language", "source", "llm_failed"}."""
+    """Read the buyer's message."""
     result = lexicon.parse(text)
     result["source"] = "keywords"
     result["llm_failed"] = False
@@ -63,9 +55,7 @@ def parse_text_to_attributes(text):
 
 
 def describe_photo(img, query_vector):
-    """Tags (Gemini, or CLIP if Gemini is off/fails) and a colour summary of the
-    buyer's photo, so reasons can say "same pattern and border, shade darker".
-    Returns {"tags", "colour", "source", "llm_failed"}."""
+    """Tags (Gemini, or CLIP if Gemini is off/fails) and a colour summary of the buyer's photo, so reasons can say "same pattern and border, shade darker"."""
     tags, source = tagging.tag_image(img, query_vector)
     provider = llm.get_llm()
     return {
@@ -77,7 +67,6 @@ def describe_photo(img, query_vector):
     }
 
 
-# Colour summaries of catalogue photos, worked out once per file
 _design_colours = {}
 
 
@@ -90,9 +79,7 @@ def design_colour(image_file):
 
 
 def ask_clarifying_question(text, query):
-    """One question back to the buyer when the enquiry is too vague.
-    Gemini writes it in the buyer's language; a template is used otherwise.
-    Returns {"question", "source", "llm_failed"}."""
+    """One question back to the buyer when the enquiry is too vague."""
     language = query.get("language", "en")
     provider = llm.get_llm()
     if provider.available:
@@ -110,8 +97,7 @@ def ask_clarifying_question(text, query):
 
 
 def draft_reply(design_ids, language, no_match=False, min_quantity=None):
-    """Reply text for the designs staff picked. Stock and rate are read again
-    from the database right now, and written into the text by a template."""
+    """Reply text for the designs staff picked."""
     designs = [db.get_design(d) for d in design_ids]
     designs = [d for d in designs if d is not None]
     return templates.draft_reply(language, designs, no_match=no_match, min_quantity=min_quantity)
@@ -126,9 +112,7 @@ def _positive_number(value):
 
 
 def english_phrase(attributes, fallback_text):
-    """CLIP only understands English, so describe the request in plain English
-    ("a photo of a red bandhani saree"). Uses the buyer's own words if nothing
-    was recognised."""
+    """CLIP only understands English, so describe the request in plain English ("a photo of a red bandhani saree")."""
     if not attributes:
         return fallback_text
     words = [attributes.get(a) for a in ("main_colour", "fabric", "pattern", "work_type")]
@@ -140,8 +124,7 @@ def english_phrase(attributes, fallback_text):
 
 
 def text_search(phrase):
-    """Compare a text description with every catalogue photo (CLIP).
-    Returns {design_id: similarity 0-1}."""
+    """Compare a text description with every catalogue photo (CLIP)."""
     ids, matrix = db.load_embeddings()
     if not ids:
         return {}
@@ -151,14 +134,12 @@ def text_search(phrase):
 
 
 def attribute_filter(wanted, designs):
-    """Score each design's tags against the wanted attributes.
-    Returns {design_id: (score 0-1, [attributes that matched])}."""
+    """Score each design's tags against the wanted attributes."""
     return {d["design_id"]: scoring.attribute_match(wanted, d["tags"]) for d in designs}
 
 
 def check_stock(designs, max_rate=None, min_quantity=None):
-    """Stock and rate straight from the stock table (loaded only from stock.csv).
-    Returns {design_id: {quantity_available, rate, unit, in_stock, enough_stock, within_budget}}."""
+    """Stock and rate straight from the stock table (loaded only from stock.csv)."""
     info = {}
     for d in designs:
         quantity = d["quantity_available"]
@@ -174,7 +155,6 @@ def check_stock(designs, max_rate=None, min_quantity=None):
 
 
 def top_ids(scores, n):
-    """The n design_ids with the highest score."""
     ids = list(scores)
     values = np.array([scores[i] for i in ids])
     return [ids[i] for i in np.argsort(-values)[:n]]

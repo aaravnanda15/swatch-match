@@ -23,7 +23,7 @@ if [ ! -d .venv ]; then
   "$PY" -m venv .venv
 fi
 source .venv/bin/activate
-# Install again whenever requirements.txt changes (its fingerprint is kept in .venv/.installed)
+# reinstall when requirements.txt changes
 REQS=$(python -c "import hashlib; print(hashlib.sha1(open('requirements.txt', 'rb').read()).hexdigest())")
 if [ "$(cat .venv/.installed 2>/dev/null)" != "$REQS" ]; then
   echo "==> Installing Python packages (first run takes a few minutes)"
@@ -51,7 +51,6 @@ fi
 
 # 4. Frontend build
 echo "==> Building the UI"
-# npm install is quick when nothing changed, and picks up new packages after a git pull
 (cd frontend && npm install --no-audit --no-fund --loglevel=error && npm run build)
 
 # 5. Start the server

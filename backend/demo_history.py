@@ -18,9 +18,8 @@ from backend.agent import templates
 from backend.config import ROOT
 from backend.images import load_image_file
 
-# What buyers typically ask a saree/fabric wholesaler, in their own words.
-# Some match the sample stock well, some are things the shop does not have:
-# that gap is what the "missed demand" panel is for.
+# Mix of things the sample stock has and things it doesn't (that gap is
+# what shows up as missed demand).
 SAMPLE_TEXTS = [
     ("lal bandhani chahiye", 3),
     ("red bandhani saree", 2),
@@ -59,7 +58,6 @@ def _sqlite(dt):
 
 
 def _good_picks(answer):
-    """Same rule as the screen: in-stock Very close / Similar, up to 2."""
     good = [r["design_id"] for r in answer["results"]
             if r["in_stock"] and r["label"] in ("very_close", "similar")]
     return good[:2]
@@ -79,7 +77,7 @@ def seed(count=42, days=7, seed_value=11):
                 when = now - timedelta(minutes=rng.randint(5, 120))
 
             img, image_file, text = None, None, rng.choice(texts)
-            if i % 7 == 3:  # some buyers send just a photo
+            if i % 7 == 3:
                 img = load_image_file(ROOT / "test_queries" / rng.choice(SAMPLE_PHOTOS))
                 image_file, text = enquiries.save_upload(img), ""
 
@@ -89,7 +87,6 @@ def seed(count=42, days=7, seed_value=11):
             answer = enquiries.run(text, img, image_file, whatsapp=buyer)
             enquiry_id = answer["enquiry_id"]
 
-            # Most enquiries got a reply, typically within a few minutes
             picks = _good_picks(answer)
             replied = answer["mode"] != "vague" and rng.random() < 0.8
             with db.connect() as conn:

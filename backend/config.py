@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-# The project root is one folder above this file (swatch-match/).
 ROOT = Path(__file__).resolve().parent.parent
 
 load_dotenv(ROOT / ".env")

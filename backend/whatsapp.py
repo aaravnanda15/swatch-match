@@ -1,13 +1,6 @@
-"""THE only file that talks to WhatsApp (Meta's WhatsApp Business Cloud API).
+"""Talks to Meta's WhatsApp Cloud API: webhook checks, parsing, media, sending.
 
-Receiving: Meta calls our webhook with new messages. verify_signature() makes
-sure a call really came from Meta; parse_webhook() turns it into a simple list.
-Sending: send_text() and send_image(). Nothing here decides WHAT to send;
-staff approve every reply in the app first.
-
-With WHATSAPP_DRY_RUN=1 nothing is sent: messages are printed to the server
-log instead, and media ids starting with "local:" are read from disk, so the
-whole flow can be tested with scripts/fake_whatsapp.py and no Meta account.
+WHATSAPP_DRY_RUN=1 prints instead of sending (see scripts/fake_whatsapp.py).
 """
 
 import hashlib
@@ -43,7 +36,6 @@ def configured():
 
 
 def enabled():
-    """The Inbox is shown: real WhatsApp is set up, or demo mode is on."""
     return configured() or DEMO_MODE
 
 
@@ -66,9 +58,7 @@ def verify_signature(raw_body: bytes, header: str):
 
 
 def parse_webhook(payload):
-    """Meta's nested JSON -> list of simple dicts, one per incoming message:
-    {"id", "phone", "name", "timestamp", "type", "text", "media_id"}
-    type is "image", "text" or "unsupported" (video, voice note, sticker...)."""
+    """Meta's nested JSON -> list of simple dicts, one per incoming message: {"id", "phone", "name", "timestamp", "type", "text", "media_id"} type is "image", "text" or "unsupported" (video, voice note, sticker...)."""
     messages = []
     for entry in payload.get("entry", []) or []:
         for change in entry.get("changes", []) or []:
@@ -103,7 +93,6 @@ def _headers():
 
 
 def download_media(media_id):
-    """Bytes of a photo the buyer sent."""
     if dry_run() and media_id.startswith("local:"):
         path = (ROOT / media_id[len("local:"):]).resolve()
         if ROOT.resolve() not in path.parents or not path.is_file():
@@ -120,8 +109,6 @@ def download_media(media_id):
 
 
 def _post_message(body, simulated=False):
-    """Send one message; returns WhatsApp's message id.
-    simulated=True: the buyer is a demo buyer, so never call Meta."""
     if dry_run() or simulated:
         log.info("DRY RUN, not sent. To %s: %s %s", body["to"], body.get("type"), body.get("text") or body.get("image"))
         return f"dry-{uuid.uuid4().hex[:12]}"
@@ -149,7 +136,6 @@ def send_text(to, text, simulated=False):
 
 
 def send_image(to, jpeg_bytes, filename, caption, simulated=False):
-    """Upload a photo (JPEG bytes) to WhatsApp, then send it with a caption."""
     if dry_run() or simulated:
         return _post_message({"to": to, "type": "image", "image": {"file": filename, "caption": caption}}, True)
     try:

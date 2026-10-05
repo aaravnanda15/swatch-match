@@ -1,9 +1,7 @@
 """Writing staff edits of stock and rate back into catalogue/stock.csv.
 
-stock.csv stays the single source of truth: `python -m backend.ingest` reloads
-stock and rates from it, so an edit made only in the database would be undone
-on the next ingest. The file is rewritten safely (temporary file, then swap),
-keeping every other column and row exactly as it was.
+stock.csv stays the source of truth: ingest reloads from it, so a DB-only edit
+would be undone on the next ingest.
 """
 
 import csv
@@ -16,13 +14,11 @@ _lock = threading.Lock()
 
 
 def _format_number(value):
-    """2150.0 -> "2150", 1499.5 -> "1499.5" (keeps the CSV tidy)."""
     return str(int(value)) if float(value).is_integer() else str(value)
 
 
 def update_row(design_id, quantity, rate):
-    """Set quantity_available and rate for one design. Raises KeyError if the
-    design is not in stock.csv."""
+    """Set quantity_available and rate for one design."""
     with _lock:
         with open(STOCK_CSV, newline="", encoding="utf-8-sig") as f:
             reader = csv.DictReader(f)

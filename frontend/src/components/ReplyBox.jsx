@@ -11,11 +11,6 @@ const LANGUAGES = [
   { id: "gu", label: "ગુજરાતી" },
 ];
 
-// Draft reply for the designs staff ticked. The text comes from templates on
-// the server (stock and rate straight from stock.csv); staff can edit it,
-// then Approve copies it and saves it to the log. For WhatsApp enquiries
-// (whatsapp prop) staff can instead tap Send on WhatsApp. Nothing is ever
-// sent without that tap.
 export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp }) {
   const [language, setLanguage] = useState(
     LANGUAGES.some((l) => l.id === defaultLanguage) ? defaultLanguage : "en"
@@ -50,7 +45,7 @@ export default function ReplyBox({ enquiryId, picked, defaultLanguage, whatsapp 
     }
   }
 
-  // Rebuild the draft when the picks or language change, unless staff edited it
+  // rebuild on pick/language change, but don't overwrite staff edits
   useEffect(() => {
     if (lastBuilt.current === `${pickedKey}|${language}`) {
       setStale(false); // back to what the draft was built for

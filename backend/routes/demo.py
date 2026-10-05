@@ -1,11 +1,4 @@
-"""Demo mode (DEMO_MODE=1): sample photos, simulated buyers, the sample
-Insights week, and the buyer chat page at /#buyer.
-
-The buyer chat lets anyone play a buyer from their own phone. Its messages go
-through backend/inbox.py exactly like real WhatsApp ones, and the shop's
-replies come back into the same chat. Those routes are public (no passcode),
-so they only work in demo mode and are rate-limited.
-"""
+"""Demo mode (DEMO_MODE=1): sample photos, simulated buyers, the sample Insights week, and the buyer chat page at /#buyer."""
 
 import threading
 import time
@@ -22,6 +15,8 @@ from backend.routes.common import file_inside
 
 router = APIRouter(prefix="/api/demo")
 
+# The buyer chat routes are public (no passcode), so they only work in demo
+# mode and are rate-limited per buyer.
 CHAT_PREFIX = "9100"  # buyer chat numbers: 9100 + 8 digits, clearly not real mobiles
 CHAT_LIMIT = 10  # messages per buyer per minute
 
@@ -33,7 +28,6 @@ def _demo_only():
 
 @router.get("/photos")
 def demo_photos():
-    """Sample buyer photos for one-tap examples."""
     return demo.sample_photos()
 
 
@@ -56,7 +50,6 @@ class SimulateRequest(BaseModel):
 
 @router.post("/simulate")
 def demo_simulate(req: SimulateRequest):
-    """A pretend WhatsApp buyer messages the shop."""
     _demo_only()
     if not demo.simulate(req.scenario_id):
         raise HTTPException(404, "Unknown scenario")
@@ -77,9 +70,7 @@ def demo_history_clear():
     return {"sample_count": 0}
 
 
-# ---------- buyer chat ----------
-
-_recent = defaultdict(deque)  # phone -> times of its last messages
+_recent = defaultdict(deque)
 _recent_lock = threading.Lock()
 
 

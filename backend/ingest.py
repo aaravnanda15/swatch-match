@@ -92,7 +92,6 @@ def ingest(retag=False):
     rows = read_stock_csv()
     print(f"stock.csv: {len(rows)} valid designs")
 
-    # 1. Designs and stock (stock and rate come ONLY from stock.csv)
     with db.connect() as conn:
         for r in rows:
             db.upsert_design(conn, r["design_id"], r["image_file"], r["name"], r["quantity"], r["rate"], r["unit"])
@@ -100,11 +99,9 @@ def ingest(retag=False):
     if gone:
         print(f"Removed {len(gone)} designs no longer in stock.csv")
 
-    # 1b. Staff tags from catalogue/tags.csv (optional). They count as checked
-    #     by staff; edits made later in the app are never overwritten.
+    # tags.csv = staff-checked tags; later edits in the app still win
     load_tags_csv({r["design_id"] for r in rows})
 
-    # 2. Work out what still needs doing
     with db.connect() as conn:
         need_embedding = [r for r in rows if db.get_embedding_file(conn, r["design_id"]) != r["image_file"]]
         need_tags = []
@@ -117,16 +114,14 @@ def ingest(retag=False):
         print("Everything is up to date.")
         return
 
-    # 3. CLIP embeddings for new or changed photos
     if need_embedding:
         print(f"Computing image embeddings for {len(need_embedding)} photos...")
         for r in need_embedding:
-            img = load_image_file(CATALOGUE_DIR / r["image_file"])  # already checked readable
+            img = load_image_file(CATALOGUE_DIR / r["image_file"])
             vector = embeddings.encode_images([img])[0]
             with db.connect() as conn:
                 db.save_embedding(conn, r["design_id"], r["image_file"], vector)
 
-    # 4. Tags: Gemini first, CLIP if Gemini is off or failing
     provider = llm.get_llm()
     print(f"Tagging {len(need_tags)} designs (LLM: {provider.name})...")
     ids, matrix = db.load_embeddings()

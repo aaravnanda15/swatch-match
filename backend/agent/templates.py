@@ -1,9 +1,4 @@
-"""Fixed wording for messages to the buyer, in English, Hindi, Hinglish and
-Gujarati. Used when the LLM is off, and ALWAYS for any line with a stock
-number or a rate, so numbers can never be made up.
-"""
-
-# ---------- clarifying question (one question only) ----------
+"""Fixed wording for messages to the buyer, in English, Hindi, Hinglish and Gujarati."""
 
 # What we ask depends on what is missing; {known} is what we did understand.
 CLARIFY = {
@@ -27,15 +22,12 @@ CLARIFY = {
 
 
 def clarifying_question(language, attributes):
-    """One polite question asking for the most useful missing details."""
     texts = CLARIFY.get(language, CLARIFY["en"])
     known = [v for v in attributes.values() if v not in ("none", "other", "unknown")]
     if known:
         return texts["known"].format(known=" ".join(known))
     return texts["nothing"]
 
-
-# ---------- draft reply ----------
 
 REPLY = {
     "en": {
@@ -98,7 +90,6 @@ def _units(language, unit, quantity):
 
 
 def _rupees(value):
-    """1150 -> "₹1,150" (Indian grouping: 1,50,000)."""
     whole = str(int(round(value)))
     if len(whole) > 3:
         head, tail = whole[:-3], whole[-3:]
@@ -113,8 +104,7 @@ def _rupees(value):
 
 
 def draft_reply(language, designs, no_match=False, min_quantity=None):
-    """designs: list of dicts straight from the database (design_id, name, rate,
-    unit, quantity_available). Every number in the text comes from these dicts."""
+    """designs: list of dicts straight from the database (design_id, name, rate, unit, quantity_available)."""
     t = REPLY.get(language, REPLY["en"])
     lines = [t["hello"], t["intro_no_match"] if no_match else t["intro"], ""]
     for i, d in enumerate(designs, start=1):

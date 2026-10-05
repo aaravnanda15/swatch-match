@@ -121,7 +121,6 @@ def fetch_category(category, limit):
 
 
 def name_from_title(title):
-    """'File:Red bandhani saree 2.jpg' -> 'Red Bandhani Saree 2'."""
     name = Path(title.replace("File:", "")).stem
     name = re.sub(r"\(\d+\)", "", name)  # drop Flickr photo numbers like (8357739114)
     name = re.sub(r"[_\-]+", " ", name)

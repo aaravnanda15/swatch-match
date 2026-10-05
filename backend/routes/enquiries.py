@@ -14,7 +14,6 @@ router = APIRouter(prefix="/api")
 
 @router.post("/enquiry")
 def enquiry(image: UploadFile | None = File(None), text: str = Form("")):  # noqa: B008 (FastAPI style)
-    """A buyer's enquiry: a photo, some text, or both."""
     text = text.strip()
     max_chars = CONFIG["uploads"]["max_text_chars"]
     if len(text) > max_chars:
@@ -23,7 +22,7 @@ def enquiry(image: UploadFile | None = File(None), text: str = Form("")):  # noq
     # Browsers send an empty file part when no photo was picked
     img, image_file = None, None
     if image is not None and image.filename:
-        data = image.file.read(MAX_BYTES + 1)  # one byte too many, so "too big" is noticed
+        data = image.file.read(MAX_BYTES + 1)
         try:
             img = load_image(data)
         except BadImage as e:
@@ -83,7 +82,6 @@ def audit():
 
 @router.get("/uploads/{image_file}")
 def upload(image_file: str):
-    """Buyer photos saved with each enquiry."""
     return file_inside(UPLOAD_DIR, image_file)
 
 

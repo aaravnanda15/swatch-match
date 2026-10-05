@@ -1,14 +1,11 @@
 {
-  // GitHub Codespaces: a free online copy of the app (see README, "Live demo").
-  // First start installs everything (about 10 minutes); later starts take seconds.
   "name": "Swatch Match",
   "build": { "dockerfile": "Dockerfile" },
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "22" },
-    // lets `gh codespace ssh` / `gh codespace logs` reach the codespace
     "ghcr.io/devcontainers/features/sshd:1": {}
   },
-  // CLIP needs more memory than the smallest machine has
+  // CLIP doesn't fit on the smallest machine
   "hostRequirements": { "cpus": 2, "memory": "8gb" },
   "containerEnv": {
     "DEMO_MODE": "1",
@@ -18,8 +15,6 @@
   "portsAttributes": {
     "7860": { "label": "Swatch Match", "onAutoForward": "silent" }
   },
-  // Install packages, download CLIP, load the catalogue and build the UI once
   "postCreateCommand": "bash .devcontainer/setup.sh",
-  // Start the app every time the codespace starts (also after it wakes up)
   "postStartCommand": "bash .devcontainer/start.sh"
 }

@@ -31,7 +31,6 @@ PHOTO_AND_TEXT = [("D010", "isme blue wala silk chahiye"), ("D024", "same orange
 
 
 def buyer_style(img, rng):
-    """One fake 'phone photo' of a catalogue photo."""
     img = ImageOps.exif_transpose(img).convert("RGB")
     w, h = img.size
     keep = rng.uniform(0.6, 0.85)

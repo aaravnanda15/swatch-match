@@ -1,7 +1,4 @@
-"""Running an enquiry through the agent and saving it. Shared by the Enquiry
-screen (POST /api/enquiry) and WhatsApp messages (backend/inbox.py), so both
-take exactly the same path.
-"""
+"""Running an enquiry through the agent and saving it."""
 
 import uuid
 
@@ -12,7 +9,6 @@ from backend.images import load_image_file, to_jpeg_bytes
 
 
 def save_upload(img):
-    """Keep the buyer's (already cleaned) photo; returns its file name."""
     image_file = f"{uuid.uuid4().hex}.jpg"
     (UPLOAD_DIR / image_file).write_bytes(to_jpeg_bytes(img))
     return image_file
@@ -32,7 +28,6 @@ def _shortlist(answer):
 
 
 def run(text, img, image_file, whatsapp=None):
-    """Agent + save. Returns the agent's answer with "enquiry_id" added."""
     answer = orchestrator.handle_enquiry(text, img)
     answer["enquiry_id"] = db.create_enquiry(
         text, image_file, answer["mode"], _shortlist(answer), answer=answer, whatsapp=whatsapp

@@ -1,14 +1,4 @@
-"""Keyword fallback for reading an enquiry when no LLM is available.
-
-Knows English, Hinglish (Hindi in Latin letters), Hindi (Devanagari) and
-Gujarati words for colours, patterns, garments, fabrics, borders and work,
-plus budgets like "under 2000" / "2000 se kam" / "2000 तक" and quantities
-like "50 pcs". Every value it returns is from the fixed vocabulary in
-config.yaml.
-
-Limits (the LLM handles these better): no negation ("not red"), no spelling
-mistakes beyond the variants listed here.
-"""
+"""Keyword fallback for reading an enquiry when no LLM is available."""
 
 import re
 
@@ -152,9 +142,6 @@ def _is_latin(word):
 
 
 def _positions(text, word):
-    """Where a word appears. Latin words must be whole words ("red" not in "covered");
-    Hindi/Gujarati words are matched as plain text because their vowel signs break
-    the usual whole-word rules."""
     if _is_latin(word):
         return [m.start() for m in re.finditer(r"(?<![a-z])" + re.escape(word) + r"(?![a-z])", text)]
     return [m.start() for m in re.finditer(re.escape(word), text)]
@@ -170,8 +157,7 @@ HINGLISH_WORDS = {
 
 
 def detect_language(text):
-    """'hi' for Devanagari, 'gu' for Gujarati script, 'hinglish' for Hindi in
-    English letters, otherwise 'en'."""
+    """'hi' for Devanagari, 'gu' for Gujarati script, 'hinglish' for Hindi in English letters, otherwise 'en'."""
     if re.search(r"[઀-૿]", text):
         return "gu"
     if re.search(r"[ऀ-ॿ]", text):
@@ -191,8 +177,7 @@ MIN_BUDGET = 50
 
 
 def parse(text):
-    """Text -> {"attributes": {...}, "max_rate": number|None, "min_quantity": int|None,
-    "language": "en"|"hi"|"gu", "matched_words": [...]}"""
+    """Text -> {"attributes": {...}, "max_rate": number|None, "min_quantity": int|None, "language": "en"|"hi"|"gu", "matched_words": [...]}"""
     lower = text.lower().translate(DIGITS)
     # Blank out phrases that only look like fabric words (same length keeps positions)
     lower = NOT_NET_FABRIC.sub(lambda m: " " * len(m.group(0)), lower)
@@ -208,7 +193,7 @@ def parse(text):
             attributes[attr] = value
             matched.append(word)
 
-    # Colours: first one mentioned is the main colour, a different second one is secondary
+    # first colour mentioned = main, the next different one = secondary
     colours = _match_attribute(lower, WORDS["main_colour"], used)
     if colours:
         attributes["main_colour"] = colours[0][0]
@@ -228,17 +213,11 @@ def parse(text):
 
 
 def _match_attribute(text, entries, used):
-    """All (value, word) found for one attribute, in the order they appear in the text.
-
-    Longer phrases are checked first and "use up" their part of the text, so
-    "zari border" counts as a zari border and not also as zari work. `used`
-    holds the (start, end) spans already taken, shared across attributes."""
     candidates = []
     for value, words in entries:
         for word in words:
             for start in _positions(text, word.lower()):
                 candidates.append((start, start + len(word), value, word))
-    # Longest phrase first so it claims its text before shorter words inside it
     candidates.sort(key=lambda c: -(c[1] - c[0]))
     found = []
     for start, end, value, word in candidates:
@@ -247,7 +226,6 @@ def _match_attribute(text, entries, used):
         used.append((start, end))
         found.append((start, value, word))
     found.sort()
-    # Keep the first mention of each value
     result, seen = [], set()
     for _, value, word in found:
         if value not in seen:

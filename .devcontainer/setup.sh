@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Runs once when the codespace is created: everything run.sh does except
-# starting the server (start.sh does that).
+# postCreate: run.sh's install steps, without starting the server
 set -e
 cd "$(dirname "$0")/.."
 python -m venv .venv

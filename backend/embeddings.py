@@ -1,9 +1,4 @@
-"""CLIP embeddings. Photos and text go into the same vector space, so we can
-compare a buyer's photo OR words against catalogue photos.
-
-The model (~600 MB) downloads once into data/models and is loaded the first
-time it is needed, not at import time.
-"""
+"""CLIP embeddings."""
 
 import threading
 
@@ -29,13 +24,11 @@ def get_model():
 
 
 def encode_images(images):
-    """List of PIL images -> numpy matrix, one normalised row per image."""
     vectors = get_model().encode(images, batch_size=16, convert_to_numpy=True, show_progress_bar=False)
     return _normalise(vectors)
 
 
 def encode_texts(texts):
-    """List of strings -> numpy matrix, one normalised row per text."""
     vectors = get_model().encode(texts, batch_size=64, convert_to_numpy=True, show_progress_bar=False)
     return _normalise(vectors)
 

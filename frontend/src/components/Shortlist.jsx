@@ -7,9 +7,6 @@ import ReplyBox from "./ReplyBox.jsx";
 import ResultCard from "./ResultCard.jsx";
 import TracePanel from "./TracePanel.jsx";
 
-// The agent's answer for one enquiry: what was understood, notices, the
-// answer cards (tick to offer), the reply box and the trace. Used by the
-// Enquiry tab and the WhatsApp Inbox.
 
 
 const MODE_TEXT = {
@@ -19,8 +16,7 @@ const MODE_TEXT = {
   vague: "Not clear yet",
 };
 
-// Ticked at the start: in-stock designs labelled Very close or Similar (up to 3).
-// If none is that good, the closest in-stock design is ticked so a reply is ready (staff can untick).
+// pre-tick up to 3 good in-stock matches, else the closest in-stock one
 function defaultPicks(answer) {
   if (answer.clarifying_question) return [];
   const good = answer.results.filter((r) => r.in_stock && ["very_close", "similar"].includes(r.label));
@@ -29,14 +25,13 @@ function defaultPicks(answer) {
   return closest ? [closest.design_id] : [];
 }
 
-// whatsapp (optional): { enquiryId, status, hoursLeft, buyerName, onSent } for Inbox enquiries
+// whatsapp: { enquiryId, status, hoursLeft, buyerName, onSent }, Inbox only
 export default function Shortlist({ answer, onOpenImage, whatsapp }) {
   const [picked, setPicked] = useState(() => defaultPicks(answer));
 
   function togglePick(designId) {
     setPicked((list) => (list.includes(designId) ? list.filter((d) => d !== designId) : [...list, designId]));
   }
-  // Keep the reply in shortlist order, whatever order things were ticked
   const pickedInOrder = answer.results.map((r) => r.design_id).filter((d) => picked.includes(d));
 
   const understood = Object.values(answer.query.attributes);

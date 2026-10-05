@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { imageUrl, uploadUrl } from "../api.js";
 import Icon from "./Icon.jsx";
 
-// Full-screen photo. Closes on tap outside, the X button or Escape.
 export default function ImageViewer({ design, onClose }) {
   useEffect(() => {
     if (!design) return;

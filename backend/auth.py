@@ -1,7 +1,4 @@
-"""Staff passcode. When STAFF_PASSCODE is set, every /api route except the
-public ones needs the login cookie. When it is empty (local use) nothing is
-locked, so the app works as before.
-"""
+"""Staff passcode."""
 
 import hashlib
 import hmac
@@ -24,7 +21,6 @@ def login_required():
 
 
 def _token():
-    """The cookie value: a signature only someone who knows the passcode can make."""
     return hmac.new(STAFF_PASSCODE.encode(), b"swatch-match-staff", hashlib.sha256).hexdigest()
 
 
@@ -44,7 +40,6 @@ def set_cookie(response, request: Request):
 
 
 async def guard(request: Request, call_next):
-    """Middleware: block locked /api routes without a valid cookie."""
     path = request.url.path
     if login_required() and path.startswith("/api/") and not path.startswith(PUBLIC):
         cookie = request.cookies.get(COOKIE, "")

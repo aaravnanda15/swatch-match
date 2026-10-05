@@ -2,8 +2,6 @@ import { useState } from "react";
 import { sendWhatsApp } from "../api.js";
 import Icon from "./Icon.jsx";
 
-// "Send on WhatsApp" with a confirm step. Only for enquiries that came in on
-// WhatsApp. Sends the reply text, then one photo per picked design.
 // whatsapp = { enquiryId, status, hoursLeft, buyerName, onSent }
 export default function WhatsAppSend({ whatsapp, picked, text, language, disabled }) {
   const [confirming, setConfirming] = useState(false);

@@ -4,7 +4,6 @@ import { rupees } from "../format.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 
-// Friendly labels for the attribute names in config.yaml
 const LABELS = {
   garment_type: "Type",
   main_colour: "Main colour",
@@ -62,7 +61,6 @@ export default function CataloguePage() {
   const unchecked = designs.filter((d) => d.tag_source !== "manual").length;
   const outOfStock = designs.filter((d) => d.quantity_available === 0).length;
 
-  // Simple search over id, name and tag values, plus the filter chips
   const query = search.trim().toLowerCase();
   const shown = designs.filter((d) => {
     if (filter === "unchecked" && d.tag_source === "manual") return false;
@@ -220,7 +218,7 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
       {!editing && !editingStock && (
         <div className="space-y-2 border-t border-line/70 px-3 py-2.5">
           <div className="flex flex-wrap gap-1">
-            {/* Each tag value once; skip "none"/"unknown" which add nothing */}
+            {/* each value once, skip none/unknown */}
             {[...new Set(Object.keys(LABELS).map((attr) => design.tags[attr]))]
               .filter((value) => value && !["none", "unknown"].includes(value))
               .map((value) => (
@@ -304,7 +302,6 @@ function DesignCard({ design, attributes, onSaved, onOpenImage }) {
   );
 }
 
-// Staff update how many pieces are in stock and the rate per piece
 function StockEditor({ design, onSaved, onCancel }) {
   const [quantity, setQuantity] = useState(String(design.quantity_available));
   const [rate, setRate] = useState(String(design.rate));

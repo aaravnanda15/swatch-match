@@ -1,5 +1,4 @@
-"""Inbox tab and WhatsApp: Meta's webhook, the list of WhatsApp enquiries,
-and sending an approved reply. Nothing is sent without a staff tap."""
+"""Inbox tab and WhatsApp: Meta's webhook, the list of WhatsApp enquiries, and sending an approved reply."""
 
 import threading
 
@@ -17,7 +16,6 @@ router = APIRouter(prefix="/api")
 
 @router.get("/whatsapp/webhook")
 def whatsapp_verify(request: Request):
-    """Meta's one-time check when the webhook URL is saved in its dashboard."""
     q = request.query_params
     if q.get("hub.mode") == "subscribe" and whatsapp.verify_token_ok(q.get("hub.verify_token", "")):
         return PlainTextResponse(q.get("hub.challenge", ""))
@@ -74,7 +72,6 @@ def inbox_item(enquiry_id: int):
 
 @router.get("/inbox/{enquiry_id}/chat")
 def inbox_chat(enquiry_id: int):
-    """The whole conversation with this enquiry's buyer."""
     return db.list_chat(_whatsapp_enquiry(enquiry_id)["buyer_phone"])
 
 

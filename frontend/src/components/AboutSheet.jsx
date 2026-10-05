@@ -15,7 +15,6 @@ const TRUST = [
   ["A person approves every reply", "The agent shortlists; it never decides and never sends on its own."],
 ];
 
-// "How it works" for judges and new staff. Opened from the header.
 export default function AboutSheet({ open, onClose }) {
   useEffect(() => {
     if (!open) return;

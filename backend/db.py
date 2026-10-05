@@ -1,18 +1,4 @@
-"""SQLite storage. One small file (data/swatch.db) holds everything.
-
-Tables:
-  designs     one row per catalogue design (from stock.csv)
-  stock       quantity and rate, ONLY ever loaded from stock.csv
-  tags        attribute tags per design, as JSON, plus where they came from
-              ("gemini", "clip" or "manual" when staff corrected them)
-  embeddings  CLIP image vector per design, stored as raw float32 bytes
-  enquiries   one row per buyer enquiry (text, saved photo, enquiry type, the
-              agent's answer; WhatsApp enquiries also have the buyer and a status)
-  wa_seen     every WhatsApp message id received, so Meta's retries are ignored
-  stock_changes  every stock / rate edit made by staff in the app
-  chat_messages  the WhatsApp conversation with each buyer, both directions
-  audit_log   approved replies (copied or sent on WhatsApp)
-"""
+"""SQLite storage."""
 
 import json
 import sqlite3
@@ -91,8 +77,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 @contextmanager
 def connect():
-    """`with connect() as conn:` opens the database, saves the changes at the
-    end (or undoes them on an error) and closes the connection."""
+    """`with connect() as conn:` opens the database, saves the changes at the end (or undoes them on an error) and closes the connection."""
     conn = sqlite3.connect(DB_FILE, timeout=10)
     conn.row_factory = sqlite3.Row
     try:
@@ -134,8 +119,6 @@ def init_db():
                     conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
 
-# ---------- designs and stock ----------
-
 def upsert_design(conn, design_id, image_file, name, quantity, rate, unit):
     conn.execute(
         "INSERT INTO designs (design_id, image_file, name) VALUES (?, ?, ?) "
@@ -151,7 +134,6 @@ def upsert_design(conn, design_id, image_file, name, quantity, rate, unit):
 
 
 def remove_designs_not_in(conn, keep_ids):
-    """Designs deleted from stock.csv disappear from the app too."""
     rows = conn.execute("SELECT design_id FROM designs").fetchall()
     gone = [r["design_id"] for r in rows if r["design_id"] not in keep_ids]
     for design_id in gone:
@@ -204,8 +186,6 @@ def update_stock(design_id, quantity, rate):
         )
 
 
-# ---------- tags ----------
-
 def get_tag_source(conn, design_id):
     row = conn.execute("SELECT source FROM tags WHERE design_id = ?", (design_id,)).fetchone()
     return row["source"] if row else None
@@ -219,8 +199,6 @@ def save_tags(conn, design_id, tags, source):
         (design_id, json.dumps(tags), source),
     )
 
-
-# ---------- embeddings ----------
 
 def get_embedding_file(conn, design_id):
     """Which photo the stored embedding was made from (None if no embedding yet)."""
@@ -237,7 +215,6 @@ def save_embedding(conn, design_id, image_file, vector):
 
 
 def load_embeddings():
-    """Return (list of design_ids, numpy matrix with one row per design)."""
     with connect() as conn:
         rows = conn.execute("SELECT design_id, vector FROM embeddings ORDER BY design_id").fetchall()
     ids = [r["design_id"] for r in rows]
@@ -247,12 +224,8 @@ def load_embeddings():
     return ids, matrix
 
 
-# ---------- enquiries ----------
-
 def create_enquiry(text, image_file, mode, shortlist, answer=None, whatsapp=None):
-    """Save a new enquiry and what the agent found. Returns its id.
-    shortlist = {"ids": [...], "no_match": bool, "query": {...}, "question": str|None}
-    whatsapp  = {"phone", "name", "message_id"} for enquiries that came in on WhatsApp"""
+    """Save a new enquiry and what the agent found."""
     wa = whatsapp or {}
     with connect() as conn:
         cur = conn.execute(
@@ -296,8 +269,6 @@ def get_enquiry(enquiry_id):
     return _enquiry_from_row(row) if row else None
 
 
-# ---------- WhatsApp inbox ----------
-
 def mark_seen(message_id, phone, received_at):
     """Remember a WhatsApp message. Returns False if it was already seen (a retry)."""
     with connect() as conn:
@@ -327,7 +298,6 @@ def find_open_enquiry(phone, since_sqlite_time):
 
 
 def list_inbox(limit=100):
-    """WhatsApp enquiries, newest first, without the bulky answer."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT id, created_at, text, image_file, mode, buyer_phone, buyer_name, status, sent_at "
@@ -344,8 +314,6 @@ def set_status(enquiry_id, status):
         else:
             conn.execute("UPDATE enquiries SET status = ? WHERE id = ?", (status, enquiry_id))
 
-
-# ---------- audit log (approved replies) ----------
 
 def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sent_ids=None):
     with connect() as conn:
@@ -368,7 +336,6 @@ def add_audit(enquiry, picked_ids, reply_text, language, sent_via="copy", wa_sen
 
 
 def list_audit(limit=200):
-    """Newest first."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT * FROM audit_log WHERE is_sample = 0 ORDER BY id DESC LIMIT ?", (limit,)
@@ -382,10 +349,7 @@ def list_audit(limit=200):
     return entries
 
 
-# ---------- insights ----------
-
 def insight_rows(since_sqlite_time):
-    """Enquiries since a time, with the time of their first approved reply."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT e.id, e.created_at, e.mode, e.source, e.is_sample, e.answer_json, "
@@ -415,8 +379,6 @@ def delete_samples():
         conn.execute("DELETE FROM audit_log WHERE is_sample = 1")
         conn.execute("DELETE FROM enquiries WHERE is_sample = 1")
 
-
-# ---------- conversation with each buyer ----------
 
 def add_chat(phone, direction, text=None, image_ref=None, caption=None):
     with connect() as conn:

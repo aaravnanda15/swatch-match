@@ -4,12 +4,10 @@ import { copyText } from "../clipboard.js";
 import Icon from "./Icon.jsx";
 import WhatsAppSend from "./WhatsAppSend.jsx";
 
-// Shown when the enquiry is too vague: one question to send back to the buyer.
 export default function ClarifyCard({ question, enquiryId, language, whatsapp }) {
   const [done, setDone] = useState(false);
   const [error, setError] = useState("");
 
-  // Logged like any approved reply, then copied for pasting into WhatsApp
   async function approve() {
     setError("");
     try {
@@ -27,7 +25,6 @@ export default function ClarifyCard({ question, enquiryId, language, whatsapp })
         <Icon name="question" className="h-4 w-4" />
         Not clear yet. Ask the buyer one question
       </p>
-      {/* Looks like an outgoing chat message */}
       <div className="mt-2.5 ml-auto max-w-[92%] rounded-2xl rounded-tr-md bg-[#dcf3d8] px-3 py-2 text-[15px] leading-snug text-ink shadow-sm">
         {question}
       </div>

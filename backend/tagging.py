@@ -1,9 +1,4 @@
-"""Attribute tags for a catalogue photo.
-
-First choice: ask the LLM (Gemini). If that is unavailable or fails, use CLIP
-"zero-shot": compare the photo with short sentences like "a photo of a red
-saree" and pick the closest sentence for each attribute.
-"""
+"""Attribute tags for a catalogue photo."""
 
 import numpy as np
 
@@ -36,8 +31,7 @@ CLIP_VALUE_TEXT = {
 
 
 def clean_tags(raw):
-    """Keep only known attributes with allowed values. Returns None if any
-    attribute is missing or has a value outside the fixed vocabulary."""
+    """Keep only known attributes with allowed values."""
     if not isinstance(raw, dict):
         return None
     cleaned = {}
@@ -50,8 +44,7 @@ def clean_tags(raw):
 
 
 def tag_with_llm(img):
-    """Ask the LLM. Returns a dict of the valid values it gave (possibly partial),
-    or None if the LLM is unavailable or answered nothing usable."""
+    """Ask the LLM."""
     raw = llm.get_llm().tag_image(to_jpeg_bytes(img))
     if not isinstance(raw, dict):
         return None
@@ -67,7 +60,6 @@ def _clip_sentence(attr, value):
     return CLIP_VALUE_TEXT.get((attr, value), CLIP_TEMPLATES[attr].format(value))
 
 
-# Text vectors for every attribute value, computed once and reused.
 _text_vectors = {}
 
 
@@ -88,8 +80,7 @@ def tag_with_clip(image_vector):
 
 
 def tag_image(img, image_vector):
-    """Returns (tags, source) where source is "gemini" or "clip".
-    If Gemini gives an odd value for one attribute, CLIP fills just that one."""
+    """Returns (tags, source) where source is "gemini" or "clip"."""
     llm_tags = tag_with_llm(img)
     clip_tags = tag_with_clip(image_vector)
     if not llm_tags:

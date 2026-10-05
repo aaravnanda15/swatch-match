@@ -1,10 +1,4 @@
-"""Demo mode (DEMO_MODE=1): simulated WhatsApp buyers for presentations.
-
-Each scenario goes through exactly the same code as a real WhatsApp message
-(backend/inbox.py), only the message comes from here instead of Meta, and
-replies are printed instead of sent. Photos are the edited "buyer-style"
-copies in test_queries/.
-"""
+"""Demo mode (DEMO_MODE=1): simulated WhatsApp buyers for presentations."""
 
 import threading
 import time
@@ -69,7 +63,6 @@ SCENARIOS = [
 
 
 def public_scenarios():
-    """What the screen needs to show the buttons."""
     out = []
     for s in SCENARIOS:
         photo = next((v for k, v in s["messages"] if k == "photo"), None)
@@ -88,8 +81,7 @@ def public_scenarios():
 
 
 def simulate(scenario_id):
-    """Pretend the buyer messaged us. Runs in the background like a real webhook.
-    Returns False for an unknown scenario."""
+    """Pretend the buyer messaged us."""
     scenario = next((s for s in SCENARIOS if s["id"] == scenario_id), None)
     if scenario is None:
         return False
@@ -112,5 +104,4 @@ def simulate(scenario_id):
 
 
 def sample_photos():
-    """Buyer-style photos the Enquiry screen offers as one-tap examples."""
     return [p.name for p in sorted(SAMPLE_PHOTO_DIR.glob("q_*.jpg"))]

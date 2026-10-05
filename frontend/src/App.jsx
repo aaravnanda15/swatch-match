@@ -33,7 +33,6 @@ export default function App() {
   }, []);
   const onNewCount = useCallback((n) => setNewCount(n), []);
 
-  // "(2) Swatch Match" in the browser tab while enquiries are waiting
   useEffect(() => {
     document.title = newCount > 0 ? `(${newCount}) Swatch Match` : "Swatch Match";
   }, [newCount]);
@@ -45,7 +44,6 @@ export default function App() {
         if (h.whatsapp_configured) setTab("inbox"); // WhatsApp shops start in the Inbox
       })
       .catch(() => setHealth({ status: "down" }));
-    // Any API call answered with 401 brings up the passcode screen
     const onAuth = () => setNeedsLogin(true);
     window.addEventListener("auth-required", onAuth);
     return () => window.removeEventListener("auth-required", onAuth);
@@ -86,7 +84,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Tabs at the top on wider screens */}
         <nav className="mx-auto hidden max-w-5xl gap-1 px-4 md:flex" aria-label="Sections">
           {TABS.map((t) => (
             <button
@@ -105,7 +102,7 @@ export default function App() {
         </nav>
       </header>
 
-      {/* Pages stay mounted so an enquiry in progress survives a tab switch */}
+      {/* keep pages mounted so a half-done enquiry survives a tab switch */}
       <main className="mx-auto max-w-5xl px-4 pt-5 pb-28 md:pb-12">
         {whatsapp && (
           <div hidden={tab !== "inbox"}>
@@ -128,7 +125,6 @@ export default function App() {
 
       <AboutSheet open={aboutOpen} onClose={() => setAboutOpen(false)} />
 
-      {/* Bottom tab bar on phones: easy to reach with a thumb */}
       <nav
         className="pb-safe fixed inset-x-0 bottom-0 z-20 border-t border-line bg-card/95 backdrop-blur md:hidden"
         aria-label="Sections"

@@ -1,11 +1,4 @@
-"""Incoming WhatsApp messages -> enquiries in the Inbox.
-
-Each message goes through the same agent as the Enquiry screen
-(backend/enquiries.py). Buyers often send a photo and then a separate text
-("isme blue chahiye"); messages from the same buyer within merge_seconds are
-combined into one photo + text enquiry. Nothing is ever sent from here:
-staff review the shortlist and tap Send in the app.
-"""
+"""Incoming WhatsApp messages -> enquiries in the Inbox."""
 
 import logging
 import threading
@@ -25,7 +18,6 @@ _lock = threading.Lock()
 
 
 def handle_messages(messages):
-    """Called in the background after the webhook has already answered Meta."""
     for message in messages:
         try:
             with _lock:
@@ -85,7 +77,6 @@ def _save_unsupported(buyer, note):
 
 
 def mask(phone):
-    """910000000101 -> +91 00•••••101 (for logs and lists)."""
     phone = phone or ""
     if len(phone) < 8:
         return phone

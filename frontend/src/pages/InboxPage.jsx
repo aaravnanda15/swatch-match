@@ -25,13 +25,11 @@ const STATUS = {
   dismissed: { text: "Dismissed", style: "bg-line/70 text-muted" },
 };
 
-// WhatsApp enquiries, already run through the agent. Staff open one, check the
-// shortlist and reply. Polls in the background so the tab badge stays current.
 export default function InboxPage({ active, onNewCount, demoMode }) {
   const [items, setItems] = useState(null);
   const [error, setError] = useState("");
   const [openId, setOpenId] = useState(null);
-  // Simulated buyers still on their way: [{ buyer, afterId }]
+  // simulated buyers we're waiting for, so we can open them on arrival
   const [pending, setPending] = useState([]);
   const pendingRef = useRef([]);
   pendingRef.current = pending;
@@ -43,7 +41,6 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
         setItems(data.items);
         onNewCount(data.new);
         setError("");
-        // Open each simulated buyer's enquiry as soon as it arrives
         const still = [];
         for (const w of pendingRef.current) {
           const arrived = data.items.find((i) => i.id > w.afterId && (i.buyer_name || "").startsWith(w.buyer));
@@ -59,7 +56,7 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
       .catch((e) => setError(e.message));
   }, [onNewCount]);
 
-  // Poll fast while simulated buyers are on their way, and briefly after
+  // poll faster while waiting (a follow-up text may still merge in)
   const fast = pending.length > 0 || fastUntil > Date.now();
   useEffect(() => {
     if (!fast) return;
@@ -88,7 +85,6 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
     return () => clearInterval(timer);
   }, [load]);
 
-  // Refresh straight away when the tab is opened
   useEffect(() => {
     if (active) load();
   }, [active, load]);
@@ -98,7 +94,7 @@ export default function InboxPage({ active, onNewCount, demoMode }) {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
-      {/* List: always on desktop, hidden on phones while an enquiry is open */}
+      {/* phones: list hidden while an enquiry is open */}
       <div className={`min-w-0 space-y-4 ${openId ? "hidden lg:block" : ""}`}>
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">Inbox</h2>
@@ -204,7 +200,7 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
       .catch((e) => setError(e.message));
   }, [id]);
 
-  // Reload when the list shows this enquiry changed (e.g. a follow-up text merged in)
+  // reload when a follow-up text merges in
   useEffect(load, [load, signature]);
 
   async function dismiss() {
@@ -234,7 +230,6 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
         Inbox
       </button>
 
-      {/* Who and when */}
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate font-display text-xl font-semibold tracking-tight">
@@ -299,7 +294,6 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
   );
 }
 
-// Demo mode: pretend buyers message the shop, to show the WhatsApp flow live
 function DemoPanel({ onSimulate, pending }) {
   const [scenarios, setScenarios] = useState([]);
   useEffect(() => {
@@ -350,8 +344,7 @@ function DemoPanel({ onSimulate, pending }) {
   );
 }
 
-// Everything said with this buyer so far, both ways. Falls back to the
-// enquiry's own message for enquiries recorded before conversations were kept.
+// older enquiries have no chat log; show their own message
 function Conversation({ item, refreshKey, onOpenImage }) {
   const [chat, setChat] = useState(null);
   useEffect(() => {
@@ -407,7 +400,6 @@ function Conversation({ item, refreshKey, onOpenImage }) {
   );
 }
 
-// Demo: anyone can be the buyer from their own phone
 function BuyerQR() {
   const link = `${window.location.origin}/#buyer`;
   const [qr, setQr] = useState("");

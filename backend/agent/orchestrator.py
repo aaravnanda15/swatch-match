@@ -1,19 +1,4 @@
-"""The agent: looks at what the buyer sent and calls the tools in a fixed,
-explainable order. It never loops and works the same with or without the LLM.
-
-    photo only      image_search -> describe_photo -> check_stock
-    text only       parse_text -> attribute_filter -> text_search -> check_stock
-    photo + text    image_search -> describe_photo -> parse_text -> attribute_filter
-                    -> text_search -> narrow_to_lookalikes -> check_stock
-                    ("this design but in blue": the photo finds the design,
-                     the colour from the text re-ranks)
-    vague text      parse_text -> ask_clarifying_question -> text_search -> check_stock
-                    (nothing useful recognised: one question for the buyer, plus
-                     a best-guess shortlist staff can ignore)
-
-Every tool call is written to the trace so staff can see why they got
-these results.
-"""
+"""The agent: looks at what the buyer sent and calls the tools in a fixed, explainable order."""
 
 import time
 
@@ -54,8 +39,7 @@ def decide_mode(has_image, has_text):
 
 
 def is_vague(query):
-    """Text that gives us nothing to match on: no colour, pattern, fabric, work,
-    border or budget. "saree" alone is still too broad for a useful shortlist."""
+    """Text that gives us nothing to match on: no colour, pattern, fabric, work, border or budget."""
     useful = [a for a in query["attributes"] if a != "garment_type"]
     return not useful and not query["max_rate"]
 
@@ -71,15 +55,13 @@ class Run:
         self.designs = {d["design_id"]: d for d in db.list_designs()}
         self.fallback_reasons = []
         self.clarifying_question = None
-        self.photo = None  # tags + colour of the buyer's photo
+        self.photo = None
         self.query = {"attributes": {}, "max_rate": None, "min_quantity": None, "language": "en", "source": None}
-        # One number per design, 0-1, from each kind of matching
         self.image_scores, self.attr_scores, self.text_scores = {}, {}, {}
 
 
 def handle_enquiry(text, img):
-    """text: the buyer's message ("" if none). img: a PIL image or None.
-    Returns everything the Enquiry and Inbox screens show."""
+    """text: the buyer's message ("" if none)."""
     run = Run(text, img)
     if run.img is not None:
         read_photo(run)
@@ -124,8 +106,7 @@ def read_photo(run):
 
 
 def read_text(run):
-    """Work out what the buyer asked for; ask a question back if it is too vague;
-    then compare the request with the tags and (via CLIP) with the photos."""
+    """Work out what the buyer asked for; ask a question back if it is too vague; then compare the request with the tags and (via CLIP) with the photos."""
     t = time.perf_counter()
     run.query = query = tools.parse_text_to_attributes(run.text)
     if query["llm_failed"]:
@@ -161,8 +142,7 @@ def read_text(run):
 
 
 def narrow_to_lookalikes(run):
-    """Photo + text: the photo picks the design, the words only re-rank those
-    lookalikes ("this design but in blue"). Otherwise every design is a candidate."""
+    """Photo + text: the photo picks the design, the words only re-rank those lookalikes ("this design but in blue")."""
     if run.mode != "image_and_text":
         return list(run.designs)
     t = time.perf_counter()
@@ -187,8 +167,7 @@ def score_designs(run, pool):
 
 
 def check_stock_and_budget(run, pool, scores):
-    """Stock and rate for the best candidates (only from stock.csv); drop
-    anything over the buyer's budget. Returns (top designs, stock, over budget)."""
+    """Stock and rate for the best candidates (only from stock.csv); drop anything over the buyer's budget."""
     ranked = sorted(pool, key=lambda d: -scores[d][0])[:CANDIDATES]
     t = time.perf_counter()
     max_rate = run.query["max_rate"]
@@ -204,8 +183,7 @@ def check_stock_and_budget(run, pool, scores):
 
 
 def label_results(run, kept, scores, stock):
-    """Label and explain each result. Computed from scores and tags, never
-    written by an AI, so nothing can be made up."""
+    """Label and explain each result."""
     asked = run.query["attributes"]
     # Only quote "same pattern/border" when Gemini described the photo; basic
     # CLIP photo tags are too rough to state as fact

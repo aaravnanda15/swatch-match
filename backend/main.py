@@ -1,5 +1,4 @@
-"""The FastAPI app. API routes live under /api (see backend/routes/); every
-other path serves the built React app from frontend/dist."""
+"""The FastAPI app."""
 
 import logging
 import threading
@@ -23,8 +22,6 @@ MAX_REQUEST_BYTES = MAX_BYTES + 1024 * 1024
 
 
 def _warm_up():
-    """Load CLIP so the first enquiry is not slow. In demo mode, also add the
-    sample week if it is missing (a fresh server starts with an empty database)."""
     embeddings.get_model()
     if DEMO_MODE and db.count_samples() == 0:
         log.info("added %d sample enquiries for the Insights tab", demo_history.seed())

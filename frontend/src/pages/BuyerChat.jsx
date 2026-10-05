@@ -2,9 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { chatMessages, chatSend, samplePhotoUrl } from "../api.js";
 import Icon, { Logo } from "../components/Icon.jsx";
 
-// Plays the buyer's side of WhatsApp (demo mode). Open <app link>/#buyer on
-// any phone. Messages reach the shop's Inbox the same way real WhatsApp ones
-// do, and replies the shop sends show up here.
+// /#buyer: the buyer's side of WhatsApp, for demos
 
 const STORAGE_KEY = "swatch-match-buyer";
 const POLL_MS = 2000;
@@ -40,7 +38,6 @@ function Welcome({ onStart }) {
   const [name, setName] = useState("");
   function start(e) {
     e.preventDefault();
-    // A made-up number that marks this as a demo chat buyer
     const phone = CHAT_PREFIX + String(Math.floor(Math.random() * 1e8)).padStart(8, "0");
     onStart({ name: name.trim() || "Buyer", phone });
   }
@@ -80,7 +77,6 @@ function Chat({ buyer }) {
   const bottom = useRef(null);
   const fileInput = useRef(null);
 
-  // Fetch new messages every 2 seconds
   useEffect(() => {
     let stopped = false;
     async function poll() {
@@ -91,7 +87,7 @@ function Chat({ buyer }) {
           setMessages((list) => [...list, ...fresh]);
         }
       } catch {
-        // offline for a moment: try again on the next tick
+        // try again next tick
       }
     }
     poll();

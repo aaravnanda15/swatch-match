@@ -2,7 +2,6 @@ import { imageUrl } from "../api.js";
 import { rupees } from "../format.js";
 import Icon from "./Icon.jsx";
 
-// Colours for each label (computed on the server from the score)
 const LABEL_STYLE = {
   very_close: "bg-leaf-soft text-leaf",
   similar: "bg-indigo-soft text-indigo",

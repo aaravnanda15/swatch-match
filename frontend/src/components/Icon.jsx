@@ -1,4 +1,4 @@
-// Small inline icons (no icon library needed). Usage: <Icon name="camera" className="h-5 w-5" />
+// <Icon name="camera" className="h-5 w-5" />
 const PATHS = {
   camera: (
     <>
@@ -115,7 +115,6 @@ export default function Icon({ name, className = "h-5 w-5", strokeWidth = 1.8 })
   );
 }
 
-// The Swatch Match logo: two overlapping fabric swatches
 export function Logo({ className = "h-8 w-8" }) {
   return (
     <svg viewBox="0 0 32 32" aria-hidden="true" className={className}>

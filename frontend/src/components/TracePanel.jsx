@@ -1,6 +1,6 @@
 import Icon from "./Icon.jsx";
 
-// Plain names for each agent tool (the code name is shown small, for developers)
+// tool name -> what staff see
 const TOOL_NAMES = {
   image_search: "Compared the photo with the catalogue",
   describe_photo: "Described the photo",
@@ -23,7 +23,6 @@ function show(value) {
   return String(value);
 }
 
-// "How this shortlist was made": every tool call the agent made, in order.
 export default function TracePanel({ trace, weights }) {
   const totalMs = trace.reduce((sum, s) => sum + s.ms, 0);
   const mix = Object.entries(weights)

@@ -13,13 +13,11 @@ router = APIRouter(prefix="/api")
 
 @router.get("/attributes")
 def attributes():
-    """The fixed tag vocabulary, for the tag editor's dropdowns."""
     return ATTRIBUTES
 
 
 @router.get("/settings")
 def settings():
-    """Upload limits, so the screen can warn before sending."""
     uploads = CONFIG["uploads"]
     return {
         "max_mb": uploads["max_mb"],
@@ -52,8 +50,7 @@ class StockUpdate(BaseModel):
 
 @router.patch("/designs/{design_id}/stock")
 def update_stock(design_id: str, update: StockUpdate):
-    """Staff edit stock and rate. Written to stock.csv first (it stays the
-    source of truth for `python -m backend.ingest`), then to the database."""
+    """Staff edit stock and rate."""
     if db.get_design(design_id) is None:
         raise HTTPException(404, "Design not found")
     if not 0 <= update.quantity_available <= 1_000_000:

@@ -9,10 +9,10 @@ from backend.config import CONFIG
 MAX_SIDE = CONFIG["uploads"]["max_side_px"]
 MAX_BYTES = CONFIG["uploads"]["max_mb"] * 1024 * 1024
 
-# "image/jpeg" in config.yaml -> "JPEG", the name Pillow uses for the format.
+# "image/jpeg" -> "JPEG" (Pillow's name)
 ALLOWED_FORMATS = {t.split("/")[1].upper().replace("JPG", "JPEG") for t in CONFIG["uploads"]["allowed_types"]}
 
-# Refuse absurdly large images (protects against "decompression bomb" files).
+# decompression-bomb guard
 Image.MAX_IMAGE_PIXELS = 60_000_000
 
 
@@ -21,7 +21,6 @@ class BadImage(Exception):
 
 
 def load_image(data: bytes) -> Image.Image:
-    """Turn raw file bytes into a clean RGB photo, or raise BadImage."""
     if not data:
         raise BadImage("The file is empty.")
     if len(data) > MAX_BYTES:
@@ -35,9 +34,9 @@ def load_image(data: bytes) -> Image.Image:
     if img.format not in ALLOWED_FORMATS:
         raise BadImage(f"{img.format or 'This'} files are not supported. Please send a JPG, PNG or WEBP photo.")
 
-    img = ImageOps.exif_transpose(img)  # phone photos are often stored sideways
+    img = ImageOps.exif_transpose(img)
     img = img.convert("RGB")
-    img.thumbnail((MAX_SIDE, MAX_SIDE))  # shrinks only, keeps the shape
+    img.thumbnail((MAX_SIDE, MAX_SIDE))
     return img
 
 
@@ -53,11 +52,10 @@ def to_jpeg_bytes(img: Image.Image) -> bytes:
 
 
 def colour_profile(img: Image.Image):
-    """Cheap colour summary of the middle of a photo (edges are often background).
-    Returns {"brightness": 0-1, "hue": 0-360 or None if the cloth is mostly grey/white}."""
+    """Cheap colour summary of the middle of a photo (edges are often background)."""
     w, h = img.size
     middle = img.crop((int(w * 0.2), int(h * 0.2), int(w * 0.8), int(h * 0.8))).resize((64, 64))
-    pixels = list(middle.convert("HSV").getdata())  # each value 0-255
+    pixels = list(middle.convert("HSV").getdata())
     brightness = sum(v for _, _, v in pixels) / len(pixels) / 255
     # Most common hue among clearly coloured pixels, in 12 slices of 30 degrees
     slices = [0] * 12

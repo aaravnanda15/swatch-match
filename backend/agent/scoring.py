@@ -1,17 +1,4 @@
-"""Turns the three signals into one score per design.
-
-    score = w_image * image_sim + w_attr * attr_match + w_text * text_sim
-
-Each signal is between 0 and 1. Weights come from config.yaml and depend on
-what the buyer sent.
-
-Worked example, photo + "blue silk dupatta" (weights 0.5 / 0.4 / 0.1):
-    photo looks 0.90 alike, 2 of 3 asked details match (0.67), words 0.60
-    score = 0.5 * 0.90 + 0.4 * 0.67 + 0.1 * 0.60 = 0.78  ->  "Similar" (0.65 to 0.80)
-
-Labels and one-line reasons are COMPUTED from scores, tags and a simple colour
-check, never written by an LLM, so they cannot invent anything.
-"""
+"""Turns the three signals into one score per design."""
 
 from backend.config import CONFIG
 
@@ -43,14 +30,12 @@ COLOUR_ATTRS = ("main_colour", "secondary_colour")
 
 
 def stretch(value, low_high):
-    """Map a raw similarity onto 0-1 using the range from config.yaml."""
     low, high = low_high
     return max(0.0, min(1.0, (value - low) / (high - low)))
 
 
 def attribute_match(wanted, tags):
-    """How well a design's tags fit what the buyer asked for.
-    Returns (score 0-1, list of attributes that matched fully)."""
+    """How well a design's tags fit what the buyer asked for."""
     if not wanted:
         return 0.0, []
     total, matched = 0.0, []
@@ -68,8 +53,7 @@ def attribute_match(wanted, tags):
 
 
 def weights_for(mode, has_image, has_attributes, has_text):
-    """Weights from config, with unused signals dropped and the rest scaled
-    back up to add to 1 (e.g. text with no recognisable words relies on CLIP text only)."""
+    """Weights from config, with unused signals dropped and the rest scaled back up to add to 1 (e.g."""
     key = "text_only" if mode == "vague" else mode
     weights = dict(SCORING["weights"][key])
     if not has_image:
@@ -86,11 +70,8 @@ def weights_for(mode, has_image, has_attributes, has_text):
 
 
 def combine(signals, weights):
-    """signals: {"image": x, "attributes": y, "text": z} (missing = 0)."""
     return sum(weights[k] * signals.get(k, 0.0) for k in weights)
 
-
-# ---------- labels ----------
 
 LABELS = {
     "very_close": "Very close",
@@ -111,8 +92,6 @@ def label_for(score):
     return "none"
 
 
-# ---------- one-line reasons ----------
-
 ATTR_WORDS = {
     "garment_type": "type",
     "main_colour": "colour",
@@ -130,7 +109,6 @@ SHADE_STEP = 0.12
 
 
 def _join(words):
-    """["pattern", "border", "fabric"] -> "pattern, border and fabric"."""
     if len(words) <= 1:
         return "".join(words)
     return ", ".join(words[:-1]) + " and " + words[-1]
@@ -149,10 +127,7 @@ def shade_difference(photo_colour, design_colour):
 
 
 def reason_for(signals, tags, asked, photo_tags, shade):
-    """One short line explaining a match. photo_tags: tags of the buyer's photo
-    ({} when they are too rough to quote, None when there is no photo). E.g.
-    "Looks very similar to the photo: same pattern and border, shade darker"
-    "Red bandhani saree as asked" / "Bandhani as asked, but blue instead of red"."""
+    """One short line explaining a match."""
     parts = []
 
     if photo_tags is not None:
@@ -198,9 +173,7 @@ def reason_for(signals, tags, asked, photo_tags, shade):
 
 
 def needs_shade_note(asked, matched, shade, has_photo):
-    """Tell staff to double-check the shade when the photos differ in brightness,
-    or (text enquiries) when colour carried most of the match: colours look
-    different on every phone screen."""
+    """Tell staff to double-check the shade when the photos differ in brightness, or (text enquiries) when colour carried most of the match: colours look different on every phone screen."""
     if shade:
         return True
     if has_photo:

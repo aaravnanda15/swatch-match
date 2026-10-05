@@ -1,15 +1,4 @@
-"""THE only file that talks to an LLM. To switch provider, add a class here
-with the same methods and change get_llm().
-
-Two providers with the same methods:
-  GeminiProvider  calls Google Gemini
-  NullProvider    always returns None, so callers use their fallback
-
-Every method returns None when the LLM is unavailable or fails. Callers must
-check for None and fall back; nothing here ever raises to the caller.
-Replies to buyers are built from templates (agent/templates.py), not here,
-so stock numbers and rates never come from the LLM.
-"""
+"""All LLM calls go through here (Gemini, or NullProvider when there is no key)."""
 
 import json
 import logging
@@ -67,7 +56,6 @@ def _allowed_values_text():
 
 
 def _parse_json(text):
-    """Pull the first {...} block out of the model's answer."""
     if not text:
         return None
     match = re.search(r"\{.*\}", text, re.DOTALL)
@@ -117,8 +105,6 @@ class GeminiProvider:
         return self._client
 
     def _generate(self, contents):
-        """One Gemini call that returns parsed JSON, or None on any failure.
-        If Gemini is briefly busy (503) or rate-limited (429), wait and try once more."""
         result = self._generate_once(contents)
         if result is None and self.last_error and ("503" in self.last_error or "429" in self.last_error):
             time.sleep(2)
@@ -171,9 +157,7 @@ _thread = threading.local()  # per-thread "AI off" switch, see offline()
 
 @contextmanager
 def offline():
-    """Inside `with llm.offline():` this thread uses no LLM (keyword list and
-    CLIP only). Used to generate sample data quickly without using AI quota;
-    other threads, i.e. real requests, are not affected."""
+    """Inside `with llm.offline():` this thread uses no LLM (keyword list and CLIP only)."""
     _thread.off = True
     try:
         yield
@@ -182,7 +166,6 @@ def offline():
 
 
 def get_llm():
-    """The LLM the app should use. Same object every time."""
     global _llm
     if getattr(_thread, "off", False):
         return NullProvider()

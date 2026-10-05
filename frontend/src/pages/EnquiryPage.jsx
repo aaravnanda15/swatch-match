@@ -4,14 +4,13 @@ import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import Shortlist from "../components/Shortlist.jsx";
 
-// Used until /api/settings answers (same values as config.yaml)
+// until /api/settings answers
 const DEFAULT_SETTINGS = {
   max_mb: 10,
   allowed_types: ["image/jpeg", "image/png", "image/webp"],
   max_text_chars: 1000,
 };
 
-// Tap one to fill the text box: shows staff the kinds of messages that work
 const EXAMPLES = ["red bandhani saree under 2000", "lal bandhani chahiye", "लाल बांधनी साड़ी", "same design in blue"];
 
 export default function EnquiryPage() {
@@ -32,7 +31,6 @@ export default function EnquiryPage() {
     getSettings().then(setSettings).catch(() => {}); // defaults are fine if this fails
   }, []);
 
-  // Free the preview URL when the photo changes or the page closes
   useEffect(() => {
     return () => {
       if (preview) URL.revokeObjectURL(preview);
@@ -41,7 +39,7 @@ export default function EnquiryPage() {
 
   const acceptPhoto = useCallback(
     (file) => {
-      // Check here first so the user gets an answer instantly. The server checks again.
+      // quick check here; the server checks again
       if (!settings.allowed_types.includes(file.type)) {
         setError("Please choose a JPG, PNG or WEBP photo. Other files (PDF, video, HEIC) cannot be matched.");
         return;
@@ -58,7 +56,7 @@ export default function EnquiryPage() {
     [settings]
   );
 
-  // Paste a photo straight from WhatsApp Web (Ctrl/Cmd + V) while this page is open
+  // Cmd/Ctrl+V a photo copied from WhatsApp Web
   useEffect(() => {
     function onPaste(e) {
       if (!formRef.current || formRef.current.offsetParent === null) return; // page hidden
@@ -107,7 +105,7 @@ export default function EnquiryPage() {
     setSending(true);
     try {
       setAnswer(await sendEnquiry(photo, text));
-      // On phones the shortlist is below the form: bring it into view
+      // phones: the shortlist is below the form
       if (window.innerWidth < 1024) {
         setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
       }
@@ -122,7 +120,6 @@ export default function EnquiryPage() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:items-start">
-      {/* ---------- The enquiry ---------- */}
       <form ref={formRef} onSubmit={submit} className="min-w-0 space-y-4 lg:sticky lg:top-32">
         <div>
           <h2 className="font-display text-2xl font-semibold tracking-tight">New enquiry</h2>
@@ -245,7 +242,6 @@ export default function EnquiryPage() {
         </div>
       </form>
 
-      {/* ---------- The shortlist ---------- */}
       <section ref={resultsRef} aria-live="polite" className="min-w-0 scroll-mt-20">
         {sending ? (
           <LoadingCards />
@@ -261,7 +257,6 @@ export default function EnquiryPage() {
   );
 }
 
-// One-tap example buyer photos, so anyone can try the app without files
 const FEATURED = ["q_D010_text.jpg", "q_D012.jpg", "q_D007.jpg", "q_D016.jpg", "q_D023.jpg", "q_D020.jpg"];
 
 function SamplePhotos({ onPick }) {

@@ -6,7 +6,6 @@ import Icon from "../components/Icon.jsx";
 
 const LANGUAGE_NAMES = { en: "English", hi: "हिंदी", hinglish: "Hinglish", gu: "ગુજરાતી" };
 
-// How the reply reached the buyer
 function Via({ entry }) {
   return entry.sent_via === "whatsapp" ? (
     <span className="rounded-full bg-leaf-soft px-2 py-0.5 text-[10px] font-semibold text-leaf">Sent on WhatsApp</span>
@@ -15,7 +14,6 @@ function Via({ entry }) {
   );
 }
 
-// Every reply staff approved, newest first. Reloads each time the tab opens.
 export default function AuditLogPage({ active }) {
   const [entries, setEntries] = useState(null);
   const [designs, setDesigns] = useState({});
@@ -75,14 +73,12 @@ export default function AuditLogPage({ active }) {
             {shown.length} of {entries.length} approved replies
           </p>
 
-          {/* Phones: cards */}
           <div className="space-y-3 md:hidden">
             {shown.map((e) => (
               <EntryCard key={e.id} entry={e} designs={designs} />
             ))}
           </div>
 
-          {/* Wider screens: a table */}
           <div className="hidden overflow-hidden rounded-2xl border border-line bg-card md:block">
             <table className="w-full text-left text-sm">
               <thead className="bg-paper text-xs text-muted">

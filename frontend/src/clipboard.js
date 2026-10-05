@@ -1,5 +1,4 @@
-// Copy text to the clipboard. Works on http://localhost and https; falls
-// back to the old select-and-copy trick elsewhere. Returns true if it worked.
+// navigator.clipboard needs https or localhost; fall back to execCommand
 export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);

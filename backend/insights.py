@@ -1,9 +1,4 @@
-"""Numbers for the Insights tab, worked out from enquiries and approved replies.
-
-The most useful one for a wholesaler is MISSED DEMAND: what buyers keep asking
-for that the shop could not offer (nothing close in stock, or the best match
-was out of stock). That is a restocking list written by the buyers themselves.
-"""
+"""Numbers for the Insights tab, worked out from enquiries and approved replies."""
 
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
@@ -12,7 +7,6 @@ from statistics import median
 from backend import db
 
 GOOD = ("very_close", "similar")
-# Order of words when describing a request ("green silk saree")
 DESCRIBE_ORDER = ("main_colour", "fabric", "pattern", "work_type", "garment_type")
 EMPTY = ("none", "other", "unknown", "plain")
 
@@ -32,7 +26,6 @@ def compute(days=7, tz_offset_minutes=330):
     rows, offered_lists = db.insight_rows(since.strftime("%Y-%m-%d %H:%M:%S"))
     local = timedelta(minutes=tz_offset_minutes)
 
-    # ---- Headline numbers ----
     total = len(rows)
     on_whatsapp = sum(1 for r in rows if r["source"] == "whatsapp")
     replied = [r for r in rows if r["replied_at"]]
@@ -42,7 +35,6 @@ def compute(days=7, tz_offset_minutes=330):
     matchable = [r for r in rows if r["answer"] and r["mode"] not in ("vague", "unsupported")]
     good = [r for r in matchable if r["answer"]["results"] and r["answer"]["results"][0]["label"] in GOOD]
 
-    # ---- Enquiries per day (the shop's local days) ----
     today = (now + local).date()
     per_day = {today - timedelta(days=i): 0 for i in range(days - 1, -1, -1)}
     for r in rows:
@@ -50,7 +42,6 @@ def compute(days=7, tz_offset_minutes=330):
         if day in per_day:
             per_day[day] += 1
 
-    # ---- What buyers ask for (from their words) ----
     asked = {"main_colour": Counter(), "pattern": Counter(), "garment_type": Counter()}
     languages = Counter()
     for r in rows:
@@ -64,8 +55,7 @@ def compute(days=7, tz_offset_minutes=330):
         if r["mode"] in ("text_only", "image_and_text", "vague"):
             languages[answer["query"].get("language") or "en"] += 1
 
-    # ---- Missed demand ----
-    # 1. Requests nothing in stock fully matched, grouped by what was asked
+    # missed demand: requests nothing in stock fully matched
     missed = defaultdict(lambda: {"count": 0, "budgets": []})
     for r in matchable:
         answer = r["answer"]
@@ -83,14 +73,13 @@ def compute(days=7, tz_offset_minutes=330):
         for k, v in sorted(missed.items(), key=lambda kv: -kv[1]["count"])
     ][:6]
 
-    # 2. Designs buyers wanted (good match) while they were out of stock
+    # ...and designs that were a good match but out of stock
     out_of_stock = Counter()
     for r in matchable:
         for x in r["answer"]["results"]:
             if x["label"] in GOOD and not x["in_stock"]:
                 out_of_stock[x["design_id"]] += 1
 
-    # ---- Designs offered most often ----
     offered = Counter(d for picks in offered_lists for d in picks)
 
     def design_list(counter, n):

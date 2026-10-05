@@ -2,7 +2,6 @@ import { useState } from "react";
 import { login } from "../api.js";
 import { Logo } from "./Icon.jsx";
 
-// Shown when the server asks for the staff passcode (STAFF_PASSCODE is set).
 export default function LoginScreen() {
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState("");
