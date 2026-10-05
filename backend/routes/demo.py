@@ -15,8 +15,8 @@ from backend.routes.common import file_inside
 
 router = APIRouter(prefix="/api/demo")
 
-# The buyer chat routes are public (no passcode), so they only work in demo
-# mode and are rate-limited per buyer.
+# The buyer chat page is for anyone with the link, so it only works in demo
+# mode and is rate-limited per buyer.
 CHAT_PREFIX = "9100"  # buyer chat numbers: 9100 + 8 digits, clearly not real mobiles
 CHAT_LIMIT = 10  # messages per buyer per minute
 

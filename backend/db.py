@@ -53,6 +53,11 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     image_ref  TEXT,                   -- 'upload:<file>' or 'catalogue:<file>'
     caption    TEXT
 );
+CREATE TABLE IF NOT EXISTS conversations (
+    phone      TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS meta (
     key   TEXT PRIMARY KEY,
     value INTEGER NOT NULL
@@ -102,6 +107,8 @@ NEW_COLUMNS = {
         "wa_message_id": "TEXT",
         "status": "TEXT",  # WhatsApp only: 'new', 'sent' or 'dismissed'
         "sent_at": "TEXT",
+        "followup_json": "TEXT",  # latest buyer reply in an ongoing chat + suggested answer
+        "updated_at": "TEXT",
         "is_sample": "INTEGER NOT NULL DEFAULT 0",  # demo history, see backend/demo_history.py
     },
     "audit_log": {
@@ -281,6 +288,7 @@ def _enquiry_from_row(row):
     enquiry = dict(row)
     enquiry["shortlist"] = json.loads(enquiry.pop("shortlist_json") or "{}")
     enquiry["answer"] = json.loads(enquiry.pop("answer_json") or "null")
+    enquiry["followup"] = json.loads(enquiry.pop("followup_json") or "null") if "followup_json" in enquiry else None
     return enquiry
 
 
@@ -321,11 +329,49 @@ def find_open_enquiry(phone, since_sqlite_time):
 def list_inbox(limit=100):
     with connect() as conn:
         rows = conn.execute(
-            "SELECT id, created_at, text, image_file, mode, buyer_phone, buyer_name, status, sent_at "
-            "FROM enquiries WHERE source = 'whatsapp' AND is_sample = 0 ORDER BY id DESC LIMIT ?",
+            "SELECT id, created_at, COALESCE(updated_at, created_at) AS last_at, image_file, mode, buyer_phone, "
+            "buyer_name, status, sent_at, "
+            "COALESCE(json_extract(followup_json, '$.buyer_text'), text) AS text, "
+            "json_extract(followup_json, '$.intent') AS followup_intent, "
+            "COALESCE(json_extract(followup_json, '$.flagged'), 0) AS flagged "
+            "FROM enquiries WHERE source = 'whatsapp' AND is_sample = 0 "
+            "ORDER BY last_at DESC, id DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [dict(r) for r in rows]
+
+
+def set_followup(enquiry_id, followup):
+    """A later message in the same chat: show it (and the suggested answer) on this enquiry."""
+    with connect() as conn:
+        conn.execute(
+            "UPDATE enquiries SET followup_json = ?, status = 'new', updated_at = datetime('now') WHERE id = ?",
+            (json.dumps(followup), enquiry_id),
+        )
+
+
+def get_conversation(phone):
+    with connect() as conn:
+        row = conn.execute("SELECT state_json FROM conversations WHERE phone = ?", (phone,)).fetchone()
+    return json.loads(row["state_json"]) if row else None
+
+
+def save_conversation(phone, state):
+    with connect() as conn:
+        conn.execute(
+            "INSERT INTO conversations (phone, state_json, updated_at) VALUES (?, ?, datetime('now')) "
+            "ON CONFLICT(phone) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at",
+            (phone, json.dumps(state)),
+        )
+
+
+def recent_chat(phone, limit=6):
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT direction, text, image_ref FROM chat_messages WHERE phone = ? ORDER BY id DESC LIMIT ?",
+            (phone, limit),
+        ).fetchall()
+    return [dict(r) for r in reversed(rows)]
 
 
 def set_status(enquiry_id, status):

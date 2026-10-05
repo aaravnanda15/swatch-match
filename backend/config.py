@@ -16,7 +16,7 @@ with open(ROOT / "config.yaml", encoding="utf-8") as f:
 CATALOGUE_DIR = ROOT / CONFIG["paths"]["catalogue_dir"]
 STOCK_CSV = ROOT / CONFIG["paths"]["stock_csv"]
 DATA_DIR = ROOT / CONFIG["paths"]["data_dir"]
-DB_FILE = ROOT / CONFIG["paths"]["db_file"]
+DB_FILE = Path(os.getenv("SWATCH_DB") or ROOT / CONFIG["paths"]["db_file"])  # tests use their own copy
 UPLOAD_DIR = DATA_DIR / "uploads"
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
@@ -24,7 +24,6 @@ DATA_DIR.mkdir(exist_ok=True)
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-STAFF_PASSCODE = os.getenv("STAFF_PASSCODE", "").strip()  # empty = no login (local use)
 
 # WhatsApp Business Cloud API (all four are needed; see README "Connect WhatsApp")
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN", "").strip()

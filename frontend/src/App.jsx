@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { getHealth, logout } from "./api.js";
+import { getHealth } from "./api.js";
 import Icon, { Logo } from "./components/Icon.jsx";
 import AboutSheet from "./components/AboutSheet.jsx";
-import LoginScreen from "./components/LoginScreen.jsx";
 import EnquiryPage from "./pages/EnquiryPage.jsx";
 import CataloguePage from "./pages/CataloguePage.jsx";
 import AuditLogPage from "./pages/AuditLogPage.jsx";
@@ -21,7 +20,6 @@ const ALL_TABS = [
 export default function App() {
   const [tab, setTab] = useState("enquiry");
   const [health, setHealth] = useState(null);
-  const [needsLogin, setNeedsLogin] = useState(false);
   const [newCount, setNewCount] = useState(0); // WhatsApp enquiries waiting
   const [aboutOpen, setAboutOpen] = useState(false);
   const [hash, setHash] = useState(window.location.hash); // "#buyer" = buyer chat page
@@ -39,18 +37,11 @@ export default function App() {
 
   useEffect(() => {
     getHealth()
-      .then((h) => {
-        setHealth(h);
-        if (h.whatsapp_configured) setTab("inbox"); // WhatsApp shops start in the Inbox
-      })
+      .then(setHealth)
       .catch(() => setHealth({ status: "down" }));
-    const onAuth = () => setNeedsLogin(true);
-    window.addEventListener("auth-required", onAuth);
-    return () => window.removeEventListener("auth-required", onAuth);
   }, []);
 
   if (hash === "#buyer") return <BuyerChat />; // buyers never see the staff screens
-  if (needsLogin) return <LoginScreen />;
 
   const whatsapp = Boolean(health?.whatsapp_configured);
   const TABS = ALL_TABS.filter((t) => whatsapp || !t.whatsappOnly);
@@ -73,15 +64,6 @@ export default function App() {
             <span className="hidden sm:inline">How it works</span>
           </button>
           <StatusPill health={health} />
-          {health?.login_required && (
-            <button
-              type="button"
-              onClick={() => logout().finally(() => window.location.reload())}
-              className="hidden shrink-0 text-xs font-medium text-muted hover:text-ink sm:block"
-            >
-              Log out
-            </button>
-          )}
         </div>
 
         <nav className="mx-auto hidden max-w-5xl gap-1 px-4 md:flex" aria-label="Sections">

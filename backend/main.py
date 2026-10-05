@@ -4,12 +4,11 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
-from backend import auth, db, demo_history, embeddings, llm, whatsapp
+from backend import db, demo_history, embeddings, llm, whatsapp
 from backend.config import DEMO_MODE, FRONTEND_DIST
 from backend.images import MAX_BYTES
 from backend.routes import catalogue, demo, enquiries, whatsapp as whatsapp_routes
@@ -46,42 +45,16 @@ async def limit_upload_size(request: Request, call_next):
     return await call_next(request)
 
 
-app.middleware("http")(auth.guard)  # staff passcode, only when STAFF_PASSCODE is set
-
-
 @app.get("/api/health")
 def health():
     return {
         "status": "ok",
         "llm_configured": llm.get_llm().available,
         "designs": len(db.list_designs()),
-        "login_required": auth.login_required(),
         "whatsapp_configured": whatsapp.enabled(),
         "whatsapp_dry_run": whatsapp.enabled() and whatsapp.dry_run(),
         "demo_mode": DEMO_MODE,
     }
-
-
-class LoginRequest(BaseModel):
-    passcode: str
-
-
-@app.post("/api/login")
-def login(req: LoginRequest, request: Request):
-    if not auth.login_required():
-        return {"ok": True}
-    if not auth.passcode_ok(req.passcode.strip()):
-        raise HTTPException(401, "Wrong passcode.")
-    response = JSONResponse({"ok": True})
-    auth.set_cookie(response, request)
-    return response
-
-
-@app.post("/api/logout")
-def logout():
-    response = JSONResponse({"ok": True})
-    response.delete_cookie(auth.COOKIE)
-    return response
 
 
 for routes in (catalogue, enquiries, whatsapp_routes, demo):

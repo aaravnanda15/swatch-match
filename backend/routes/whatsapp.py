@@ -67,6 +67,7 @@ def inbox_item(enquiry_id: int):
         **{k: enquiry[k] for k in fields},
         "hours_left": round(hours_left(enquiry["buyer_phone"]), 1),
         "answer": answer,
+        "followup": enquiry["followup"],
     }
 
 

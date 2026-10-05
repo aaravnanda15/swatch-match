@@ -15,6 +15,8 @@ import { shortDateTime } from "../format.js";
 import Icon from "../components/Icon.jsx";
 import ImageViewer from "../components/ImageViewer.jsx";
 import Shortlist from "../components/Shortlist.jsx";
+import WhatsAppSend from "../components/WhatsAppSend.jsx";
+import { copyText } from "../clipboard.js";
 
 const POLL_MS = 10000; // check for new WhatsApp enquiries every 10 seconds
 const FAST_POLL_MS = 1500; // right after a simulated message, check often
@@ -172,15 +174,21 @@ function InboxRow({ item, selected, onOpen }) {
             <span className={`truncate text-sm ${item.status === "new" ? "font-semibold text-ink" : "text-ink"}`}>
               {name}
             </span>
-            <span className="shrink-0 text-[11px] text-faint">{shortDateTime(item.created_at)}</span>
+            <span className="shrink-0 text-[11px] text-faint">{shortDateTime(item.last_at || item.created_at)}</span>
           </span>
           <span className="mt-0.5 flex items-center gap-2">
             <span className={`truncate text-[13px] ${unsupported ? "text-faint italic" : "text-muted"}`}>
               {item.text || (item.image_file ? "Photo" : "")}
             </span>
-            <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.style}`}>
-              {status.text}
-            </span>
+            {item.flagged ? (
+              <span className="ml-auto shrink-0 rounded-full bg-saffron px-2 py-0.5 text-[10px] font-semibold text-ink">
+                Needs owner
+              </span>
+            ) : (
+              <span className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status.style}`}>
+                {status.text}
+              </span>
+            )}
           </span>
         </span>
       </button>
@@ -262,6 +270,18 @@ function InboxDetail({ id, signature, onBack, onChanged }) {
             ? `Reply within ${Math.floor(item.hours_left)} h ${Math.round((item.hours_left % 1) * 60)} min (WhatsApp's 24-hour window).`
             : "WhatsApp's 24-hour reply window has closed. Reply from your phone instead."}
         </p>
+      )}
+
+      {item.followup && item.followup.intent !== "new_or_changed_request" && (
+        <FollowUp
+          key={`${item.followup.buyer_text}|${item.status}`}
+          item={item}
+          onSent={() => {
+            load();
+            onChanged();
+            setTimeout(() => setChatTick((n) => n + 1), 600);
+          }}
+        />
       )}
 
       <Conversation item={item} refreshKey={`${signature}|${chatTick}`} onOpenImage={setViewing} />
@@ -427,6 +447,69 @@ function BuyerQR() {
           <Icon name="chevron" className="h-3.5 w-3.5" />
         </a>
       </div>
+    </section>
+  );
+}
+
+const INTENT_TEXT = {
+  answer_to_question: "Answer to your question",
+  question_about_shown_designs: "Question about the designs",
+  greeting: "Greeting",
+  off_topic: "Off topic",
+  abusive_or_nonsense: "Off topic / rude",
+};
+
+// A later message in an ongoing chat ("67 kg", "how many in stock?") with the
+// suggested answer. Staff can edit it; nothing goes out until they send it.
+function FollowUp({ item, onSent }) {
+  const f = item.followup;
+  const [text, setText] = useState(f.reply || "");
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <section className="rise rounded-2xl border border-indigo/25 bg-card p-3 shadow-[0_1px_2px_rgb(35_29_24/0.05)]">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="font-display text-lg font-semibold tracking-tight">Buyer replied</h3>
+        <span className="rounded-full bg-indigo-soft px-2 py-0.5 text-[11px] font-semibold text-indigo">
+          {INTENT_TEXT[f.intent] || f.intent}
+        </span>
+        {f.flagged && (
+          <span className="rounded-full bg-saffron px-2 py-0.5 text-[11px] font-semibold text-ink">Needs owner</span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-muted">{f.summary}</p>
+      {f.reply ? (
+        <>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={4}
+            aria-label="Suggested reply"
+            className="mt-2 w-full resize-y rounded-xl border border-line bg-paper/40 px-3 py-2.5 text-[14px] leading-relaxed focus:border-indigo focus:bg-card focus:outline-none"
+          />
+          <div className="mt-2 space-y-2">
+            <WhatsAppSend
+              whatsapp={{ enquiryId: item.id, status: item.status, hoursLeft: item.hours_left, buyerName: item.buyer_name, onSent }}
+              picked={[]}
+              text={text}
+              language={item.answer?.query?.language || "en"}
+              disabled={!text.trim()}
+            />
+            <button
+              type="button"
+              onClick={async () => setCopied(await copyText(text))}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-line py-2.5 text-sm font-medium text-muted hover:text-ink"
+            >
+              <Icon name={copied ? "check" : "copy"} className="h-4 w-4" />
+              {copied ? "Copied" : "Copy instead (reply from phone)"}
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 rounded-xl bg-saffron-soft px-3 py-2 text-sm text-[#6e4a10]">
+          No automatic reply: this chat was handed to you after repeated off-topic messages.
+        </p>
+      )}
     </section>
   );
 }

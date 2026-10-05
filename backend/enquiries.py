@@ -27,10 +27,12 @@ def _shortlist(answer):
     }
 
 
-def run(text, img, image_file, whatsapp=None):
+def run(text, img, image_file, whatsapp=None, display_text=None):
+    """display_text: what the buyer actually wrote, when `text` is a combined request."""
     answer = orchestrator.handle_enquiry(text, img)
     answer["enquiry_id"] = db.create_enquiry(
-        text, image_file, answer["mode"], _shortlist(answer), answer=answer, whatsapp=whatsapp
+        display_text if display_text is not None else text, image_file, answer["mode"], _shortlist(answer),
+        answer=answer, whatsapp=whatsapp,
     )
     return answer
 

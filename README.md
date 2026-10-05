@@ -37,6 +37,10 @@ memory, which is slow and depends on whoever is on duty.
    **missed demand**, meaning requests nothing in stock fully matched and best matches that were out of stock. In
    effect it's a restocking list written by the buyers.
 
+8. **Chats keep their context.** "67 kg" after "red saree?" is read as an answer to "how many pieces?", not as a
+   new enquiry: the app asks "Sarees are sold per piece. Do you mean 67 pieces of the red saree?", checks the
+   number against `stock.csv`, and stays polite and on track whatever the buyer types.
+
 It **shortlists, it never decides, and nothing reaches a buyer until staff approve it.**
 
 ## How it works
@@ -79,6 +83,13 @@ The design choices that keep it reliable:
   are tagged with CLIP, and questions come from templates. A small *Basic mode* notice tells staff when this happens.
 - **Photo + text** (*"this design but in blue"*): the photo picks the 10 lookalike designs and the words re-rank
   them.
+- **The app remembers the chat, not the AI.** Each WhatsApp chat has a state in SQLite (what the buyer wants, the
+  designs shown, quantity and unit, the pending question, the stage, an off-topic counter and a short running
+  summary). Gemini only labels each new message (answer, new request, question about the designs, greeting, off
+  topic, abusive) and pulls out fields as strict JSON, and it always gets the state, the pending question and the
+  last 6 messages with it. The app then decides the next step and writes the reply from fixed templates, so stock
+  and rate come from `stock.csv` and the tone is always a polite shopkeeper's. Three off-topic messages in a row get
+  one closing line and a "Needs owner" flag. Without Gemini, a keyword classifier does the same job.
 - **Matching is cheap.** Each catalogue photo is turned into 512 numbers once, at ingest; the server keeps them
   in memory and reloads only when the catalogue changes. A buyer's photo is compared with all of them in one
   matrix multiply (0.1 ms for 30 designs, about 16 ms for 200,000). Only the closest 500 go on to scoring, and the
@@ -130,7 +141,7 @@ Set `DEMO_MODE=1` in `.env` (or in the host's settings):
 - **One-tap photos:** the Enquiry tab always offers one-tap sample buyer photos.
 - **Buyer chat:** `<app link>/#buyer` is a WhatsApp-style chat page; the Inbox shows a QR code for it. Anyone can
   play the buyer from their own phone: their messages reach the Inbox through the same code as real WhatsApp, and
-  the shop's replies, with design photos, appear on that phone. This page needs no passcode, works only in demo
+  the shop's replies, with design photos, appear on that phone. This page works only in demo
   mode, and is limited to 10 messages a minute per buyer.
 
 ## Live demo
@@ -153,8 +164,8 @@ Things to know:
 - **Laptop must stay on:** the link works only while the laptop is awake and both commands are running.
 - **New link each time:** every start gives a new random link, so share the new one.
 - **Use demo mode:** `DEMO_MODE=1` in `.env` gives judges simulated WhatsApp buyers and the sample Insights week.
-- **Set a passcode for a public link:** `STAFF_PASSCODE` in `.env`, then run `./run.sh` again. Otherwise anyone with
-  the link can edit stock, prices and tags (saved to `catalogue/stock.csv` on the laptop) and use your Gemini quota.
+- **No login:** anyone with the link can use every screen, including editing stock, prices and tags (saved to
+  `catalogue/stock.csv` on the laptop), and their enquiries use your Gemini quota. Share the link with judges only.
 - **For testing only:** quick tunnels are meant for demos. For daily use, host it as described in *Deploy to
   Hugging Face Spaces* or on a small always-on server.
 - **WhatsApp webhooks:** the same link can serve as a temporary webhook URL for testing with Meta's test number
@@ -181,6 +192,19 @@ Things to know:
   Its log is `/tmp/swatch.log`. Data is kept between starts.
 - **Free hours:** a 2-core codespace uses the free monthly hours at about 2 core-hours per hour, so stop it when
   nobody needs it.
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -v
+```
+
+`tests/test_conversation.py` runs multi-turn chats through the same path as real WhatsApp messages: "67 kg" for
+sarees, a plain "67" checked against stock, "67 shit", three "yo bro" in a row, "actually blue", Hinglish, and 40
+turns of nonsense followed by "how many in stock?". Every reply is checked for slang and swearing, and for any number
+that isn't in `stock.csv` or in the buyer's own messages. Each script runs with Gemini and again with the AI switched
+off. The tests use a copy of the database.
 
 ## Accuracy
 
@@ -224,8 +248,7 @@ use the Cloudflare quick tunnel in *Live demo* instead.
 2. Push this repository to the Space, for example with
    `git remote add space https://huggingface.co/spaces/<you>/swatch-match` and then `git push space HEAD:main`.
    Use a Hugging Face access token with write permission as the password.
-3. In the Space's **Settings → Variables and secrets**, add the secret `GEMINI_API_KEY` (optional) and
-   **`STAFF_PASSCODE`**. Set the passcode whenever the app is online, or anyone with the link could open it.
+3. In the Space's **Settings → Variables and secrets**, add the secret `GEMINI_API_KEY` (optional).
 
 The Dockerfile builds the UI, installs CPU-only PyTorch, downloads CLIP and loads the catalogue at build time, so
 the Space starts quickly. It has not been built end to end yet (the team's live demo runs on Codespaces and a
@@ -304,12 +327,13 @@ python scripts/fake_whatsapp.py --text "isme blue silk chahiye"        # merges 
 
 ```
 backend/
-  main.py           the app: login, health, upload limit; serves the built UI
+  main.py           the app: health, upload limit; serves the built UI
   routes/           API routes: catalogue.py, enquiries.py, whatsapp.py (Inbox + sending), demo.py
-  auth.py           optional staff passcode (STAFF_PASSCODE)
   enquiries.py      run an enquiry through the agent and save it (app form and WhatsApp share this)
   whatsapp.py       the ONLY file that talks to WhatsApp (webhook check, parsing, media, sending)
-  inbox.py          incoming WhatsApp messages -> enquiries (dedupe, photo + text merge)
+  inbox.py          incoming WhatsApp messages: skips repeats, hands each one to conversation.py
+  conversation.py   chat state per buyer, reading short replies, polite redirects, owner flag
+  vector_index.py   in-memory catalogue vectors and nearest-neighbour search
   stock_csv.py      writes staff stock and price edits back into catalogue/stock.csv
   insights.py       numbers for the Insights tab, including missed demand
   demo.py           demo mode: simulated buyers
@@ -332,13 +356,14 @@ frontend/           React + Vite + Tailwind; Inbox / Enquiry / Catalogue / Insig
                     the buyer chat page (#buyer) and the "How it works" screen
 catalogue/          sample photos, stock.csv, tags.csv, CREDITS.md
 evaluate.py         top-1 / top-5 on test_queries.csv
+tests/              multi-turn chat stress tests (pytest)
 scripts/            sample catalogue fetcher, test query maker, fake WhatsApp sender
 config.yaml         thresholds, weights, vocabulary, Gemini model, upload limits
 docs/PLAN.md        the original build plan and decisions
 ```
 
 API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /api/audit` · `GET /api/designs` ·
-`PATCH /api/designs/{id}/tags` · `GET /api/health` · `POST /api/login` · `GET /api/inbox` · `GET /api/inbox/{id}` ·
+`PATCH /api/designs/{id}/tags` · `GET /api/health` · `GET /api/inbox` · `GET /api/inbox/{id}` ·
 `POST /api/inbox/{id}/dismiss` · `POST /api/whatsapp/send` · `GET|POST /api/whatsapp/webhook` ·
 `PATCH /api/designs/{id}/stock` · `GET /api/insights` · `/api/demo/...` (demo mode only).
 
@@ -351,9 +376,8 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
   judge true colour.
 - **The keyword list** misses misspellings and negation (*"not red"*). Gemini handles these when a key is set.
 - **One photo per enquiry**, and one main product per photo.
-- **One shared passcode**, not separate staff accounts. The Log does not record who approved each reply.
-- **The buyer chat page is open to anyone with the link** in demo mode (rate-limited), and so is the whole app if
-  no `STAFF_PASSCODE` is set.
+- **No login or accounts**, by design for this version: the app is meant for one shop's staff, and anyone with
+  the link can use it. The Log does not record who approved each reply.
 
 ## What could come next
 
@@ -363,7 +387,6 @@ API: `POST /api/enquiry` · `POST /api/reply` · `POST /api/approve` · `GET /ap
 - Persistent storage on Hugging Face (a dataset repo or a small database) so tag edits and the Log survive
   restarts.
 - Approved WhatsApp *message templates*, so staff can follow up after the 24-hour window.
-- Separate staff logins, so the Log shows who approved each reply.
 
 ## AI tools used
 

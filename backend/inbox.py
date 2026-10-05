@@ -3,14 +3,12 @@
 import logging
 import threading
 import time
-from datetime import datetime, timedelta, timezone
 
-from backend import db, enquiries, whatsapp
+from backend import conversation, db, enquiries, whatsapp
 from backend.config import CONFIG
 from backend.images import BadImage, load_image
 
 log = logging.getLogger("swatch.inbox")
-MERGE_SECONDS = CONFIG["whatsapp"]["merge_seconds"]
 MAX_TEXT = CONFIG["uploads"]["max_text_chars"]
 
 # One message at a time, so a photo and the text right after it cannot race
@@ -54,21 +52,9 @@ def handle_message(m):
         return "empty, ignored"
     db.add_chat(m["phone"], "in", text=text or None, image_ref=f"upload:{image_file}" if image_file else None)
 
-    # Same buyer, a moment ago, still waiting: merge photo and text
-    since = (datetime.now(timezone.utc) - timedelta(seconds=MERGE_SECONDS)).strftime("%Y-%m-%d %H:%M:%S")
-    previous = db.find_open_enquiry(m["phone"], since)
-    if previous and previous["mode"] != "unsupported":
-        if img is None and previous["image_file"] and not previous["text"]:
-            photo = enquiries.load_upload(previous["image_file"])
-            enquiries.rerun(previous["id"], text, photo, previous["image_file"])
-            return f"text merged into enquiry #{previous['id']}"
-        if img is not None and not previous["image_file"] and previous["text"]:
-            combined = previous["text"] + (f" {text}" if text else "")
-            enquiries.rerun(previous["id"], combined, img, image_file)
-            return f"photo merged into enquiry #{previous['id']}"
-
-    answer = enquiries.run(text, img, image_file, whatsapp=buyer)
-    return f"new enquiry #{answer['enquiry_id']} ({answer['mode']})"
+    # the chat keeps its own state; see backend/conversation.py
+    turn = conversation.handle_turn(m["phone"], m["name"], text, img, image_file, buyer)
+    return f"{turn['intent']} (read by {turn['read_by']}), enquiry #{turn['state']['enquiry_id']}"
 
 
 def _save_unsupported(buyer, note):

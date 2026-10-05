@@ -87,6 +87,10 @@ WORDS = {
 # Hindi and Gujarati digits -> 0-9, so "२०००" and "૨૦૦૦" read as 2000
 DIGITS = str.maketrans("०१२३४५६७८९૦૧૨૩૪૫૬૭૮૯", "01234567890123456789")
 
+
+def translate_digits(text):
+    return text.translate(DIGITS)
+
 NUMBER = r"(\d+(?:[.,]\d+)?)\s*(k|thousand|hazaar|hazar|हज़ार|हजार|હજાર)?"
 CURRENCY = r"(?:₹|rs\.?|inr|rupees?|रुपये|रुपए|રૂપિયા)?\s*"
 
