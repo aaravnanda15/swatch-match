@@ -92,7 +92,9 @@ Write `validate_reply(reply, facts, language)` in a new `backend/agent/reply_gua
 - Script check: a Gujarati chat reply must be mostly Gujarati script, Hindi mostly Devanagari, en and
   hinglish mostly Latin.
 - Length cap (say 500 chars), no swear words (reuse `SWEAR`), no em dashes.
-- If anything fails, or the LLM times out or errors, use the template reply. Log which rule failed.
+- If a check fails, retry the composer **once**, telling it exactly what was wrong (for example
+  "you wrote 1800 but the rate in FACTS is 1650"). Only if the retry also fails, or the LLM times out or
+  errors, use the template reply (made warm by Step 6). Log which rule failed.
 - Record on the turn result and in the trace panel whether the reply was `composed` or `template`, so the
   demo can show it honestly.
 
@@ -120,13 +122,34 @@ Write `validate_reply(reply, facts, language)` in a new `backend/agent/reply_gua
 - In `gemini_classify()`, also ask for `refers_to` (a design ID from the shortlist the buyer means by
   "this one", "the second one", "pehla wala") and set `state["focus"]` from it.
 
-### Step 6. Rate limits and speed
+### Step 6. Keep the warmth when the AI can't help
+
+Buyer and seller have a relationship. A template must never feel colder than a composed reply.
+
+- **Personal templates.** Add `{name}`, `{item}` and `{occasion}` slots to the strings in `TURN` and
+  `REPLY` in `backend/agent/templates.py`, filled from the conversation state and memory (no AI needed).
+  Drop a slot cleanly when it is empty, so there is never a stray "ji ," or "for the ".
+- **Variants.** Give each `TURN` key 3 or 4 phrasings (the `redirect` key already uses a list). Pick one
+  that differs from `state["last_reply"]`, so a buyer never sees the same sentence twice in a row.
+- **Tone mirroring.** If the buyer writes "bhaiya", "ji" or "sir", keep a respectful, friendly register;
+  if they write formally, stay formal. Never mirror slang or abuse.
+- **Staff nudge.** When a template is used instead of a composed reply, show a small hint in the Inbox
+  and Enquiry reply box ("Plain reply, add a personal line?"), since staff approve every reply anyway.
+- **Repeat buyers.** On a buyer's first message in a new chat, if they have past enquiries, open with a
+  welcome back that mentions their last design (from the database, not the LLM).
+- **Back in stock.** If a buyer's best match was out of stock and that design's stock goes above zero in
+  the Catalogue tab, add a draft "it's back in stock" follow-up to the Inbox for staff to approve.
+- **Measure it.** In `backend/insights.py` and the Insights page, show the share of replies that were
+  composed vs template, and how often staff edited the draft before approving. Warn when the template
+  share goes above 10%.
+
+### Step 7. Rate limits and speed
 
 `config.yaml` allows about 15 Gemini calls a minute. Keep one compose call per needs_reply turn at most.
-Respect the existing `seconds_between_calls` lock in `llm.py`. Put the composer behind a config flag
+The Step 3 retry only happens on a failed check, so it is rare. Respect the existing `seconds_between_calls` lock in `llm.py`. Put the composer behind a config flag
 `llm.compose_replies: true` so we can turn it off during the demo if Gemini is slow.
 
-### Step 7. Tests and a before/after demo
+### Step 8. Tests and a before/after demo
 
 - Keep every existing test in `tests/test_conversation.py` green in both modes.
 - Add tests with a fake provider (monkeypatch `llm.get_llm`) that prove:
@@ -136,6 +159,10 @@ Respect the existing `seconds_between_calls` lock in `llm.py`. Put the composer 
   - "not this one, show another" adds to `rejected` and the next suggestion is different;
   - a mid-chat "hi" resumes the pending question;
   - memory keeps "for a wedding" and later replies can use it.
+  - a composed reply that fails once and passes on the retry is used (no template);
+  - template replies fill the buyer's name and item, never leave an empty slot, and two turns in a row
+    with the same action get different wording;
+  - a returning buyer gets a welcome back that names their last design.
 - Add `scripts/demo_conversations.py` that plays 5 scripted chats (Hinglish wedding order, Gujarati
   buyer with a unit mix-up, buyer asking about delivery and COD, buyer who rejects two designs, rude
   buyer who then asks a real question) and prints template reply vs composed reply side by side. I will
