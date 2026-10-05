@@ -193,6 +193,22 @@ def find_occasion(text):
     return next((o for o, words in OCCASIONS.items() if any(_positions(lower, w) for w in words)), None)
 
 
+# How the buyer writes, so the reply can match it (never their slang)
+RESPECTFUL = {"ji", "bhaiya", "bhaiyya", "bhai", "sir", "madam", "maam", "sahab", "saheb", "जी", "भैया", "सर", "साहब",
+              "સાહેબ", "ભાઈ"}
+FORMAL = re.compile(r"\b(?:dear|kindly|regards|request you|please advise|please share|could you please|greetings)\b",
+                    re.IGNORECASE)
+
+
+def detect_tone(text):
+    """"formal", "respectful" (ji, bhaiya, sir), or None when the message doesn't show it."""
+    if FORMAL.search(text):
+        return "formal"
+    if set(re.findall(r"[a-z]+|[ऀ-ॿ]+|[઀-૿]+", text.lower())) & RESPECTFUL:
+        return "respectful"
+    return None
+
+
 # "net price" / "net rate" is about money, not net fabric
 NOT_NET_FABRIC = re.compile(r"\bnet\s+(?:price|rate|amount|total|weight|wt)\b")
 

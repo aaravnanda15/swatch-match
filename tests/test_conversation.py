@@ -177,3 +177,11 @@ def test_13_memory_keeps_the_occasion(mode):
     state = chat.say("how many in stock?")
     assert "Buying for a wedding" in state["memory"] and state["occasion"] == "wedding"
     assert is_red_saree(state)
+
+
+def test_14_hi_in_the_middle_of_a_chat_picks_up_where_it_left_off(mode):
+    chat = Chat()
+    chat.say("red saree?")
+    state = chat.say("hi")
+    assert state["last_intent"] == "greeting" and state["pending_question"]["expects"] == "quantity"
+    assert "red saree" in state["last_reply"] and "How many pieces" in state["last_reply"]

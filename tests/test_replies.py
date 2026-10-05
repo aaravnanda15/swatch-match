@@ -4,11 +4,14 @@
 """
 
 import json
+import re
+import string
 
 import pytest
 from helpers import Chat, FakeLLM
 
 from backend import db, llm
+from backend.agent import templates
 from backend.agent.reply_guard import validate_reply
 from backend.config import CONFIG
 
@@ -105,3 +108,50 @@ def test_notes_from_the_ai_are_remembered_and_used_later(fake):
     chat.say("red saree for my daughter's wedding in december")
     chat.say("20")
     assert note in chat.state()["memory"] and note in ai.calls[-1][0]["memory"]
+
+
+# ---------- the templates, used when the AI is off or its reply fails a check ----------
+
+STRAY = re.compile(r"\{|\}| {2}| [,.!?:।]|^[,.]|ji [,.]|for the [?.!]")
+
+
+def test_every_template_fills_cleanly_with_or_without_a_name():
+    values = dict(item="red saree", plural="Sarees", kind="sarees", unit="piece", units="pieces", units_n="pieces",
+                  buyer_unit="kg", n=5, available=8, rate="₹1,450", name="Gold Kanchi Silk Saree", design="D003")
+    for lang, keys in templates.TURN.items():
+        for key in keys:
+            for v in range(templates.variant_count(lang, key)):
+                for extra in ({}, {"buyer": "Ramesh ji", "occasion": templates.occasion_words(lang, "wedding")}):
+                    text = templates.turn_text(lang, key, v, **values, **extra)
+                    assert not STRAY.search(text), f"{lang} {key} {v}: {text!r}"
+                    raw = keys[key] if isinstance(keys[key], str) else keys[key][v]
+                    if extra and "{buyer}" in raw:
+                        assert "Ramesh ji" in text
+    fields = {f for keys in templates.TURN.values() for k in keys.values()
+              for t in ([k] if isinstance(k, str) else k) for _, f, _, _ in string.Formatter().parse(t) if f}
+    assert fields <= set(values) | {"buyer", "occasion"}
+
+
+def test_template_replies_use_the_buyer_name_and_item():
+    with llm.offline():
+        chat = Chat(name="Ramesh Textiles")
+        first = chat.say("laal saree chahiye shaadi ke liye")
+        assert "Ramesh ji" in first["last_reply"] and "shaadi ke liye" in first["last_reply"]
+        assert "laal saree" in chat.say("lol")["last_reply"]  # the question names the item
+
+
+def test_the_same_action_twice_is_worded_differently():
+    with llm.offline():
+        chat = Chat()
+        chat.say("red saree?")
+        first = chat.say("how many in stock?")["last_reply"]
+        second = chat.say("what is the stock now?")["last_reply"]
+    assert first.splitlines()[0] != second.splitlines()[0]  # "Here's the stock right now:" vs "Stock as of now:"
+    assert first.splitlines()[-1] != second.splitlines()[-1]  # and the question after it
+
+
+def test_a_formal_buyer_gets_no_emoji():
+    with llm.offline():
+        state = Chat(name="Buyer").say("Dear sir, kindly share red saree rates")
+    assert state["tone"] == "formal" and "🙏" not in state["last_reply"]
+    assert state["last_reply"].startswith("Namaste. ")

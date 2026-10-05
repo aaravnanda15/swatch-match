@@ -52,6 +52,8 @@ REJECT = re.compile(r"not (?:this|that|these|those)|n'?t like|another|other (?:o
                     r"પસંદ નથી", re.IGNORECASE)
 OCCASION_NOTES = {"wedding": "Buying for a wedding", "festival": "Buying for a festival",
                   "party": "Buying for a party or function"}
+TONE_NOTES = {"formal": ", and formal, because the buyer writes formally",
+              "respectful": ", and warm, because the buyer writes with ji, bhaiya or sir"}
 UNITS = {
     "piece": {"pc", "pcs", "piece", "pieces", "nos", "no", "nag", "पीस", "नग", "પીસ", "નંગ",
               "saree", "sarees", "sari", "saris", "dupatta", "dupattas"},
@@ -71,7 +73,7 @@ def new_state():
         "off_topic_count": 0, "flagged": False, "language": "en", "summary": "",
         "enquiry_id": None, "turns": 0, "last_intent": None, "last_reply": "",
         "last_buyer_text": "", "filtered_count": 0, "action": None, "reply_source": None, "needs_staff": False,
-        "memory": [], "rejected": [], "shown": [], "occasion": None,
+        "memory": [], "rejected": [], "shown": [], "occasion": None, "name": None, "tone": None,
     }
 
 
@@ -206,6 +208,8 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     state = get_state(phone)
     state["turns"] += 1
     state["needs_staff"] = False
+    if name:
+        state["name"] = templates.first_name(name)
     history = db.recent_chat(phone, HISTORY + 1)[:-1]  # the newest message is already stored
 
     normalized = " ".join(text.lower().split())
@@ -217,12 +221,13 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         intent, fields, read_by = classify(state, text, history)
     if text:
         state["last_buyer_text"] = normalized
+    if text and not fields.get("filter"):
+        _notice(state, text)
 
-    lang = state["language"]
     if intent == "new_or_changed_request" and text:
         detected = fields.get("language") or lexicon.detect_language(text)
         if len(WORD.findall(text.lower())) > 1 or state["turns"] == 1:
-            lang = state["language"] = detected
+            state["language"] = detected
 
     # needs_reply: shown to the seller as New. low: reply drafted, but it can wait.
     # filtered: nothing worth the seller's time (no reply, not shown as New).
@@ -236,7 +241,7 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
     elif intent == "wants_other_designs":
         reply = _show_other(state)
     elif intent == "greeting":
-        reply = _join(templates.turn_text(lang, "greeting"), _pending_or_details(state, short=True))
+        reply = _greet(state)
         priority = "low"
     else:
         reply, priority = _off_topic(state, fields.get("filter"))
@@ -246,9 +251,6 @@ def handle_turn(phone, name, text, img=None, image_file=None, buyer=None):
         state["flagged"] = False  # a real message un-mutes the chat
     if priority == "filtered":
         state["filtered_count"] += 1
-    elif text and lexicon.find_occasion(text):
-        state["occasion"] = lexicon.find_occasion(text)
-        _remember(state, [OCCASION_NOTES[state["occasion"]]])
     source = None
     if priority == "needs_reply" and reply:
         reply, source = _write_reply(state, name, text, history, reply, intent)
@@ -296,7 +298,7 @@ def _write_reply(state, name, text, history, template, intent):
         "question": f'End with this one question, in your own words: "{pending}"' if pending
                     else "Do not ask a question; the shop is not waiting on one.",
         "language": reply_guard.LANGUAGE_NAMES.get(state["language"], "English"),
-        "tone": "",
+        "tone": TONE_NOTES.get(state["tone"], ""),
     }
     problems = []
     for attempt in (1, 2):
@@ -315,6 +317,15 @@ def _write_reply(state, name, text, history, template, intent):
         log.info("AI reply rejected (try %d of 2): %s", attempt, note)
     _note_in_trace(state, intent, "template", f"plain reply used ({note})", started)
     return template, "template"
+
+
+def _notice(state, text):
+    """What a real message tells us about the buyer: the occasion and how they write."""
+    occasion = lexicon.find_occasion(text)
+    if occasion:
+        state["occasion"] = occasion
+        _remember(state, [OCCASION_NOTES[occasion]])
+    state["tone"] = lexicon.detect_tone(text) or state["tone"]
 
 
 def _remember(state, notes):
@@ -402,16 +413,18 @@ def _new_request(state, phone, text, img, image_file, buyer, fields):
         state["action"] = "ask_for_details"
         return answer["clarifying_question"]
     if not picks:
-        state["pending_question"] = {"text": templates.turn_text(lang, "ask_details"), "expects": "details"}
+        text = _join(_say(state, "no_more"), _ask(state, "ask_details", "details"))
         state["action"] = "nothing_in_stock_ask_details"
-        return _join(templates.turn_text(lang, "no_more"), state["pending_question"]["text"])
-    item, _, _ = templates.item_words(lang, state["enquiry"])
-    state["pending_question"] = {"text": templates.turn_text(lang, "ask_quantity", item=item), "expects": "quantity"}
+        return text
+    _ask(state, "ask_quantity", "quantity", short_key="ask_quantity_short")
     state["stage"] = "asked_quantity"
     state["quantity"] = state["unit"] = None
     state["reply_picks"] = state["shown"] = picks
     state["action"] = "show_closest_designs" if answer["no_match"] else "show_matching_designs"
-    return templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"])
+    text = templates.draft_reply(lang, [db.get_design(d) for d in picks], no_match=answer["no_match"],
+                                 buyer=templates.address(lang, state["name"]),
+                                 occasion=templates.occasion_words(lang, state["occasion"]))
+    return _toned(state, text)
 
 
 def _set_outbox(state, reply, intent, source=None):
@@ -522,12 +535,8 @@ def _quantity(state, quantity, unit):
     n = int(quantity) if float(quantity).is_integer() else quantity
     if unit and unit_of(unit) != unit_of(design["unit"]):
         lang = state["language"]
-        item, plural, _ = templates.item_words(lang, state["enquiry"])
-        units = _units(lang, design["unit"], n)
-        text = templates.turn_text(lang, "unit_mismatch", plural=plural, unit=design["unit"], buyer_unit=unit,
-                                   n=n, units=units, item=item)
-        short = templates.turn_text(lang, "confirm_short", n=n, units=units, item=item)
-        state["pending_question"] = {"text": text, "short": short, "expects": "confirm_quantity", "value": n}
+        text = _ask(state, "unit_mismatch", "confirm_quantity", short_key="confirm_short", value=n,
+                    unit=_units(lang, design["unit"], 1), buyer_unit=unit, n=n, units=_units(lang, design["unit"], n))
         state["stage"] = "confirming"
         state["action"] = "unit_mismatch"
         return text
@@ -544,16 +553,13 @@ def _stock_check(state, n):
     state["quantity"], state["unit"] = n, design["unit"]
     state["stage"] = "confirming"
     if available <= 0:
-        text = templates.turn_text(lang, "out", **values)
-        state["pending_question"] = {"text": text, "expects": "take_available", "value": None}
+        text = _ask(state, "out", "take_available", short_key="similar_short", **values)
         state["action"] = "stock_check_out_of_stock"
     elif n > available:
-        text = templates.turn_text(lang, "short", **values)
-        state["pending_question"] = {"text": text, "expects": "take_available", "value": available}
+        text = _ask(state, "short", "take_available", short_key="take_short", value=available, **values)
         state["action"] = "stock_check_short"
     else:
-        text = templates.turn_text(lang, "in_stock", **values)
-        state["pending_question"] = {"text": text, "expects": "confirm_order", "value": n}
+        text = _ask(state, "in_stock", "confirm_order", short_key="book_short", value=n, **values)
         state["action"] = "stock_check_in_stock"
     return text
 
@@ -563,8 +569,8 @@ def _confirmed(state, n):
     lang = state["language"]
     state["quantity"], state["stage"], state["pending_question"] = n, "done", None
     state["action"] = "order_confirmed"
-    return templates.turn_text(lang, "confirmed", n=n, units=_units(lang, design["unit"], n),
-                               name=design["name"], design=design["design_id"])
+    return _say(state, "confirmed", n=n, units=_units(lang, design["unit"], n), name=design["name"],
+                design=design["design_id"])
 
 
 def _show_other(state):
@@ -575,13 +581,12 @@ def _show_other(state):
 
 
 def _show_similar(state):
-    lang = state["language"]
     skip = {state["focus"], *state["rejected"]}
     others = [d for d in (db.get_design(i) for i in state["shortlist"] if i not in skip)
               if d and d["quantity_available"] > 0]
     others.sort(key=lambda d: d["design_id"] in state["shown"])  # ones they haven't seen first
     if not others:
-        text = _join(templates.turn_text(lang, "no_more"), _ask_details(state))
+        text = _join(_say(state, "no_more"), _ask_details(state))
         state["action"] = "no_other_designs"
         return text
     state["focus"] = others[0]["design_id"]
@@ -597,7 +602,7 @@ def _stock_lines(state, design_ids=None, ask=True):
     designs = [d for d in designs if d]
     if not designs:
         return _ask_details(state)
-    lines = [templates.turn_text(lang, "stock_intro")]
+    lines = [_say(state, "stock_intro")]
     for d in designs:
         lines.append(templates.turn_text(lang, "stock_line", design=d["design_id"], name=d["name"],
                                          available=d["quantity_available"], rate=templates._rupees(d["rate"]),
@@ -610,19 +615,24 @@ def _stock_lines(state, design_ids=None, ask=True):
 
 
 def _ask_quantity(state):
-    item, _, _ = templates.item_words(state["language"], state["enquiry"])
-    text = templates.turn_text(state["language"], "ask_quantity", item=item)
-    state["pending_question"] = {"text": text, "expects": "quantity"}
+    text = _ask(state, "ask_quantity", "quantity", short_key="ask_quantity_short")
     state["stage"] = "asked_quantity"
     state["action"] = "ask_quantity"
     return text
 
 
 def _ask_details(state):
-    text = templates.turn_text(state["language"], "ask_details")
-    state["pending_question"] = {"text": text, "expects": "details"}
+    text = _ask(state, "ask_details", "details")
     state["stage"] = "browsing"
     state["action"] = "ask_what_they_want"
+    return text
+
+
+def _ask(state, key, expects, short_key=None, value=None, **values):
+    """Ask the buyer something, and keep the template so it can be asked again in other words."""
+    text = _say(state, key, **values)
+    state["pending_question"] = {"text": text, "key": key, "short_key": short_key, "values": values,
+                                 "expects": expects, "value": value}
     return text
 
 
@@ -632,7 +642,34 @@ def _pending_or_details(state, short=False):
     if not pending:
         return _ask_details(state)
     state["action"] = "repeat_our_question"
+    key = (short and pending.get("short_key")) or pending.get("key")
+    if key:
+        return _say(state, key, **pending.get("values", {}))
     return pending.get("short", pending["text"]) if short else pending["text"]
+
+
+def _say(state, key, **values):
+    """A template line with the buyer's name, the item and the occasion filled in,
+    worded differently from the reply the buyer just got."""
+    lang = state["language"]
+    item, plural, kind = templates.item_words(lang, state["enquiry"])
+    values = {"buyer": templates.address(lang, state["name"]), "item": item, "plural": plural, "kind": kind,
+              "occasion": templates.occasion_words(lang, state["occasion"]), **values}
+    for i in range(templates.variant_count(lang, key)):
+        text = templates.turn_text(lang, key, state["turns"] + i, **values)
+        if text not in state["last_reply"]:
+            break
+    return _toned(state, text)
+
+
+def _toned(state, text):
+    return templates.no_emoji(text) if state["tone"] == "formal" else text
+
+
+def _greet(state):
+    """Hello back. In the middle of a chat, pick up where it left off."""
+    hello = _say(state, "welcome_back" if state["pending_question"] and state["enquiry"] else "greeting")
+    return _join(hello, _pending_or_details(state, short=True))
 
 
 def _off_topic(state, kind=None):
@@ -648,10 +685,10 @@ def _off_topic(state, kind=None):
         return "", "filtered"  # muted chat: stay quiet until a real message comes
     if state["off_topic_count"] >= OFF_TOPIC_LIMIT:
         state["flagged"] = True
-        return templates.turn_text(lang, "closing"), "low"
-    question = _pending_or_details(state, short=True)
+        return _say(state, "closing"), "low"
+    question = _pending_or_details(state)
     if kind == "not_sold":
-        return _join(templates.turn_text(lang, "not_sold"), question), "low"
+        return _join(_say(state, "not_sold"), question), "low"
     redirect = templates.turn_text(lang, "redirect", variant=state["off_topic_count"] - 1)
     return _join(redirect, question), "low"
 
