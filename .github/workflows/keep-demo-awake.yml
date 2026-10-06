@@ -1,0 +1,35 @@
+# Wakes the demo codespace every 2 hours so it never hits the 4 hour idle stop,
+# and makes port 7860 public again after a restart.
+# Needs the secret CODESPACE_TOKEN: a token from the codespace owner with the "codespace" scope.
+name: Keep demo awake
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"
+  workflow_dispatch:
+
+env:
+  CODESPACE: swatch-match-demo-p7jq6gpvq479h6r5g
+  # last day to keep it awake (YYYY-MM-DD, UTC); empty means no end date
+  UNTIL: ""
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Wake the codespace
+        env:
+          GH_TOKEN: ${{ secrets.CODESPACE_TOKEN }}
+        run: |
+          if [ -n "$UNTIL" ] && [[ "$(date -u +%F)" > "$UNTIL" ]]; then
+            echo "Past $UNTIL, leaving the codespace alone"
+            exit 0
+          fi
+
+          # ssh starts the codespace if it's stopped and counts as activity
+          gh codespace ssh -c "$CODESPACE" -- \
+            'curl -sf -o /dev/null localhost:7860 || bash /workspaces/swatch-match/.devcontainer/start.sh; sleep 30'
+
+          gh codespace ports visibility 7860:public -c "$CODESPACE"
+          gh codespace ports -c "$CODESPACE"

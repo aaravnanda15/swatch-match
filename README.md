@@ -226,6 +226,10 @@ Things to know:
   (Ports tab, or `gh codespace ports visibility 7860:public -c <codespace name>`). The address stays the same.
 - **App starts by itself:** it starts on every start, in demo mode, with the Gemini key from the Codespaces secret.
   Its log is `/tmp/swatch.log`. Data is kept between starts.
+- **Keeping it awake:** `.github/workflows/keep-demo-awake.yml` connects to the codespace every 2 hours, which
+  starts it if it stopped, resets the idle timer and makes the port public again. It needs the repo secret
+  `CODESPACE_TOKEN` (a token from the codespace owner with the `codespace` scope). Set `UNTIL` in the file to the
+  last judging day so it stops using hours after that.
 - **Free hours:** a 2-core codespace uses the free monthly hours at about 2 core-hours per hour, so stop it when
   nobody needs it.
 
